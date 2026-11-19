@@ -1,0 +1,55 @@
+lipservice part 2
+title Every line of a part: étude, 100%
+grid 960
+
+voice 4446
+seed 11
+shift -2
+join 0.25
+glide 12
+dynamics 0.8
+breathiness 0.5
+diction 0
+motion -
+sway 1.25
+jitter 3
+detune 4.5
+spread 0.015
+breath 0.6
+
+tempo 0 72
+tempo 14 60.5
+meter 0 3/4
+meter 6 4/4
+
+note 1 1 D4 70 64 Slow-
+note 2 1 E4 64 64 ly
+note 3 2 F#4 88 40 now
+note 5 1 E4 60 20 _
+note 6.5 0.5 D4 52 64 the
+note 7 1 G4 96 64 riv-
+note 8 0.5 F#4 70 64 er
+note 8.5 1.5 E4+14 80 30 turns,/
+note 10 0.333333 Bb3 66 64 o-
+note 10.333333 0.333333 C4 72 64 ver
+note 10.666667 1.333333 D4 90 64 stone
+note 12 1 B3-15.6 58 64 and
+note 13 0.5 C#4 62 64 un-
+note 13.5 0.5 D4 66 64 der
+note 14 3 A3 100 10 sky.
+note 17 3 D4 84 0 _
+
+vibrato 1 0.5
+vibrato 3 0.5
+vibrato 5 1.5 line
+vibrato 6 0
+vibrato 8.5 0.25
+vibrato 10 1.25 line
+vibrato 10 0.75
+vibrato 14 0.75
+vibrato 17 2.5 line
+vibrato 20 0 line
+
+mark 1 nobreath
+mark 6.5 breath
+mark 12 breath

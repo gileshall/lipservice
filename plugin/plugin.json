@@ -1,0 +1,35 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "lipservice",
+  "version": "0.1.0",
+  "description": "Gives a model a voice: text said aloud and written scores sung, in sixteen English voices, on this machine's own CPU",
+  "author": {
+    "name": "Giles Hall",
+    "url": "https://lipservice.dev"
+  },
+  "homepage": "https://lipservice.dev",
+  "license": "AGPL-3.0-only",
+  "keywords": [
+    "text-to-speech",
+    "tts",
+    "singing",
+    "voice",
+    "audio"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Lip Service",
+        "shortDescription": "Speech and singing on your CPU",
+        "longDescription": "Says text aloud and sings written scores in sixteen English voices, made on this machine with no service to call. The sound is played through an output you name or written as a WAV file.",
+        "developerName": "Giles Hall",
+        "category": "Productivity",
+        "capabilities": [],
+        "websiteURL": "https://lipservice.dev",
+        "brandColor": "#dc2a6c",
+        "composerIcon": "./assets/icon.png",
+        "logo": "./assets/icon.png"
+      }
+    }
+  }
+}

@@ -1,0 +1,131 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+<!-- Copyright (C) 2026 Giles Hall -->
+
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>lipservice: a score</title>
+<link rel="stylesheet" href="editor.css">
+</head>
+<body>
+<header>
+  <input id="title" placeholder="the score's name" aria-label="the score's name">
+  <span class="gap"></span>
+  <button id="new">New</button>
+  <button id="open">Open</button>
+  <select id="examples" aria-label="examples"></select>
+  <button id="save-score" title="Save the whole score: every singer and the mix (cmd S)">Save</button>
+  <button id="save-part" title="Save only this singer's part">Save part</button>
+  <button id="save-midi" title="Save this singer's part as a MIDI file">Save MIDI</button>
+  <input id="file" type="file" accept=".score,.part,.txt,.mid,.midi,text/plain,audio/midi" aria-label="a file to open" hidden>
+  <span class="gap"></span>
+  <button id="sing" title="Sing the score from the marker in the ruler (space)">Sing</button>
+  <button id="stop" title="Stop singing (space)">Stop</button>
+  <button id="loop" aria-pressed="false" title="Loop the stretch marked in the ruler (O)">Loop</button>
+  <button id="click" aria-pressed="false" title="Metronome: a click on each beat (K)">Click</button>
+  <span id="click-volume"></span>
+  <label>tempo</label><span id="tempo"></span>
+  <span class="gap"></span>
+  <button id="undo">Undo</button>
+  <button id="redo">Redo</button>
+  <span class="gap"></span>
+  <button id="draw" aria-pressed="false" title="Draw: one press on an empty spot adds a note (D)">Draw</button>
+  <label for="snap" title="Notes start and end on this fraction of a beat">Snap</label>
+  <select id="snap"></select>
+  <span class="gap"></span>
+  <button id="zoom-out" title="Zoom out in time (-)">Narrower</button>
+  <button id="zoom-in" title="Zoom in in time (+)">Wider</button>
+  <button id="fit" title="Fit every note in view (F)">Fit</button>
+  <button id="others" aria-pressed="true" title="Show the other singers' notes behind this one's (G)">Others</button>
+  <span class="gap"></span>
+  <button id="side-toggle" aria-pressed="true" title="Show or hide the panel on the right">Panel</button>
+</header>
+<nav id="tabs" aria-label="the singers, and the mixer"></nav>
+<div id="roll">
+  <canvas id="canvas" tabindex="0" aria-label="the roll: the singer's notes along time, their words, velocity and vibrato"></canvas>
+  <input id="lyric" aria-label="the note's syllable" autocomplete="off" spellcheck="false">
+</div>
+<section id="mixer" hidden></section>
+<aside id="side">
+  <h2>Note</h2>
+  <div class="rows">
+    <label title="The beat the note starts on">start</label><span id="n-at"></span>
+    <label title="How long the note is, in beats">beats</label><span id="n-beats"></span>
+    <label title="The note's name, like C4, with cents where it is off: E4+14">pitch</label><span id="n-pitch"></span>
+    <label title="How hard the key was pressed, 1 to 127. Kept in the file and in MIDI; the singer does not use it yet">velocity</label><span id="n-velocity"></span>
+    <label title="How fast the key was let go, 0 to 127. Kept in the file and in MIDI; the singer does not use it yet">release</label><span id="n-release"></span>
+    <label for="n-lyric" title="What is sung on the note. End it with - when the word goes on: Ma- ry. Use _ to hold the syllable before.">syllable</label><input id="n-lyric">
+  </div>
+  <div id="n-said" class="said"></div>
+
+  <h2>Singer</h2>
+  <div class="rows">
+    <label for="s-voice">voice</label><select id="s-voice" class="wide"></select>
+    <label title="Which singer of this voice: change it for other timing, pitch and breaths">seed</label><span id="s-seed"></span>
+    <label title="Moves every note up or down, in semitones">shift</label><span id="s-shift"></span>
+    <label title="A gap between words this short, in beats, is sung through with no rest">join</label><span id="s-join"></span>
+    <label title="How long the pitch takes to move from one note to the next, in hundredths of a second">glide</label><span id="s-glide"></span>
+    <label title="How much the singer shapes loudness unasked: high notes louder, long notes swelled. 0 for none">dynamics</label><span id="s-dynamics"></span>
+    <label title="How much breath noise is in the sung vowels">breathiness</label><span id="s-breathiness"></span>
+    <label for="s-motion" title="How the pitch moves on a held note: straight, vibrato or wide vibrato, or - to use the vibrato drawn under the notes">motion</label><select id="s-motion"><option value="-">- (drawn)</option><option>straight</option><option>vibrato</option><option>wide</option></select>
+    <label title="How large that movement is: 1 is the motion's own size">sway</label><span id="s-sway"></span>
+    <label title="How far each phrase and note may land off the beat, in hundredths of a second">jitter</label><span id="s-jitter"></span>
+    <label title="How far off pitch the singer may be, in cents">detune</label><span id="s-detune"></span>
+    <label title="How far off the whole part may start, in seconds">spread</label><span id="s-spread"></span>
+    <label title="The chance of a breath before a phrase, 0 to 1">breath</label><span id="s-breath"></span>
+    <label for="s-diction" title="Sung diction: every vowel is stressed">diction</label><input id="s-diction" type="checkbox">
+  </div>
+  <div id="s-said" class="said"></div>
+
+  <h2>Sound</h2>
+  <div class="rows" id="route-row" hidden>
+    <label for="route">sound</label><select id="route" class="wide" title="Which engine sings every singer: hifi is the fullest sound, fast is quicker to make"></select>
+  </div>
+  <div class="rows">
+    <label title="Milliseconds added to the delay the browser reports for its speaker">speaker late</label><span id="delay"></span>
+  </div>
+  <div class="said">If the moving line and the sound are out of step, change this.</div>
+  <div id="delay-said" class="said"></div>
+
+  <h2>Words</h2>
+  <textarea id="words" spellcheck="false" aria-label="the words, a syllable a note from the first"></textarea>
+  <button id="words-apply" title="One syllable goes under each note, from the first note on. Split a word with -: lit-tle">Put these words under the notes</button>
+  <div id="words-said" class="said"></div>
+
+  <h2>The part as text</h2>
+  <textarea id="text" spellcheck="false" aria-label="the part as text"></textarea>
+  <button id="text-apply" title="Replace this singer's part with the text above">Load this text</button>
+  <div id="text-said" class="said"></div>
+
+  <h2>Keys</h2>
+  <div id="keys">
+    The editor needs a mouse and a keyboard. It does not work by touch.<br>
+    <kbd>double click</kbd> an empty spot to add a note<br>
+    <kbd>drag</kbd> a note to move it; drag its right end to change its length<br>
+    <kbd>Enter</kbd>, or click under a note, to type its syllable. Type several words and they fill the notes that follow<br>
+    <kbd>arrows</kbd> move the selected notes; <kbd>alt</kbd> + left or right makes them shorter or longer<br>
+    <kbd>B</kbd> breath before the note: always, never, or left to the singer<br>
+    <kbd>L</kbd> vibrato point: slide to it, or jump to it<br>
+    <kbd>delete</kbd> removes the selected notes or vibrato point<br>
+    <kbd>space</kbd> sing, or stop<br>
+    <kbd>click</kbd> the ruler to set where singing starts; while it sings, it jumps there. <kbd>Home</kbd> goes back to the start<br>
+    <kbd>drag</kbd> along the ruler to mark a loop; drag its ends to adjust it<br>
+    <kbd>O</kbd> loop on or off<br>
+    <kbd>K</kbd> metronome click on or off<br>
+    <kbd>drag</kbd> a number to change it (hold shift for small steps); <kbd>click</kbd> it to type; <kbd>alt</kbd> + click resets it<br>
+    <kbd>1</kbd> to <kbd>9</kbd> switch singer; <kbd>M</kbd> opens the mixer; <kbd>G</kbd> shows or hides the other singers' notes<br>
+    <kbd>double click</kbd> a tab to rename its singer; the <kbd>+</kbd> tab adds a singer, and with <kbd>shift</kbd> held it copies this one<br>
+    <kbd>scroll</kbd> to move along; <kbd>pinch</kbd> or <kbd>ctrl</kbd> + scroll zooms in time; <kbd>alt</kbd> + scroll zooms in pitch
+  </div>
+</aside>
+<footer id="status"></footer>
+<dialog id="which">
+  <p>This file has notes on more than one track or channel. A singer sings one line. Pick the one to open:</p>
+  <div id="which-list"></div>
+  <button id="which-cancel">None of them</button>
+</dialog>
+<script type="module" src="main.js"></script>
+</body>
+</html>

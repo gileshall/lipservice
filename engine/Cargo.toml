@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Giles Hall
+
+[package]
+name = "lipservice"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+description = "Fast CPU speech and singing synthesis"
+repository = "https://github.com/gileshall/lipservice"
+homepage = "https://lipservice.dev"
+readme = "README.md"
+keywords = ["tts", "speech", "singing", "synthesis", "audio"]
+categories = ["multimedia::audio", "command-line-utilities"]
+# the crate is the engine; the pages, the editor and the tests (which need model files) stay in the repository
+include = ["src/**", "README.md", "LICENSE"]
+
+[dependencies]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.test]
+opt-level = 3

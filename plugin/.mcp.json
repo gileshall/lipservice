@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "lipservice": {
+      "command": "lipservice",
+      "args": ["mcp"],
+      "env": {"LIPSERVICE_OUT": "${user_config.sounds}"}
+    }
+  }
+}

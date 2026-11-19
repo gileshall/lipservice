@@ -1,0 +1,252 @@
+lipservice score 1
+title Row, Row, Row Your Boat: a round for three
+
+master 0
+effect reverb on seconds 1.4 predelay 20 damp 6000 mix 0.16
+effect limiter on ceiling -1 release 80
+
+singer
+level 0
+pan -0.55
+mute 0
+solo 0
+lipservice part 2
+title Finn
+grid 480
+
+voice 6209
+seed 2
+shift 0
+join 0
+glide 9
+dynamics 1.3
+breathiness 0.35
+diction 1
+motion vibrato
+sway 1
+jitter 2
+detune 3
+spread 0
+breath 0.85
+
+tempo 0 100
+meter 0 6/8
+
+note 0 1.5 C3 80 64 Row,
+note 1.5 1.5 C3 76 64 row,
+note 3 1 C3 80 64 row
+note 4 0.5 D3 66 64 your
+note 4.5 1.5 E3 84 64 boat,/
+note 6 1 E3 78 64 Gent-
+note 7 0.5 D3 64 64 ly
+note 7.5 1 E3 76 64 down
+note 8.5 0.5 F3 66 64 the
+note 9 2.5 G3 90 64 stream./
+note 12 0.5 C4 96 64 Mer-
+note 12.5 0.5 C4 86 64 ri-
+note 13 0.5 C4 82 64 ly,
+note 13.5 0.5 G3 90 64 mer-
+note 14 0.5 G3 80 64 ri-
+note 14.5 0.5 G3 76 64 ly,
+note 15 0.5 E3 84 64 mer-
+note 15.5 0.5 E3 74 64 ri-
+note 16 0.5 E3 70 64 ly,
+note 16.5 0.5 C3 78 64 mer-
+note 17 0.5 C3 68 64 ri-
+note 17.5 0.5 C3 64 64 ly,/
+note 18 1 G3 82 64 Life
+note 19 0.5 F3 68 64 is
+note 19.5 1 E3 76 64 but
+note 20.5 0.5 D3 64 64 a
+note 21 3 C3 72 64 dream./
+note 24 1.5 C3 80 64 Row,
+note 25.5 1.5 C3 76 64 row,
+note 27 1 C3 80 64 row
+note 28 0.5 D3 66 64 your
+note 28.5 1.5 E3 84 64 boat,/
+note 30 1 E3 78 64 Gent-
+note 31 0.5 D3 64 64 ly
+note 31.5 1 E3 76 64 down
+note 32.5 0.5 F3 66 64 the
+note 33 2.5 G3 90 64 stream./
+note 36 0.5 C4 96 64 Mer-
+note 36.5 0.5 C4 86 64 ri-
+note 37 0.5 C4 82 64 ly,
+note 37.5 0.5 G3 90 64 mer-
+note 38 0.5 G3 80 64 ri-
+note 38.5 0.5 G3 76 64 ly,
+note 39 0.5 E3 84 64 mer-
+note 39.5 0.5 E3 74 64 ri-
+note 40 0.5 E3 70 64 ly,
+note 40.5 0.5 C3 78 64 mer-
+note 41 0.5 C3 68 64 ri-
+note 41.5 0.5 C3 64 64 ly,/
+note 42 1 G3 82 64 Life
+note 43 0.5 F3 68 64 is
+note 43.5 1 E3 76 64 but
+note 44.5 0.5 D3 64 64 a
+note 45 3 C3 72 64 dream./
+
+singer
+level -1.5
+pan 0
+mute 0
+solo 0
+lipservice part 2
+title Cora
+grid 480
+
+voice 6345
+seed 5
+shift 0
+join 0
+glide 9
+dynamics 1.3
+breathiness 0.35
+diction 1
+motion vibrato
+sway 1
+jitter 2
+detune 3
+spread 0
+breath 0.85
+
+tempo 0 100
+meter 0 6/8
+
+note 6 1.5 C4 80 64 Row,
+note 7.5 1.5 C4 76 64 row,
+note 9 1 C4 80 64 row
+note 10 0.5 D4 66 64 your
+note 10.5 1.5 E4 84 64 boat,/
+note 12 1 E4 78 64 Gent-
+note 13 0.5 D4 64 64 ly
+note 13.5 1 E4 76 64 down
+note 14.5 0.5 F4 66 64 the
+note 15 2.5 G4 90 64 stream./
+note 18 0.5 C5 96 64 Mer-
+note 18.5 0.5 C5 86 64 ri-
+note 19 0.5 C5 82 64 ly,
+note 19.5 0.5 G4 90 64 mer-
+note 20 0.5 G4 80 64 ri-
+note 20.5 0.5 G4 76 64 ly,
+note 21 0.5 E4 84 64 mer-
+note 21.5 0.5 E4 74 64 ri-
+note 22 0.5 E4 70 64 ly,
+note 22.5 0.5 C4 78 64 mer-
+note 23 0.5 C4 68 64 ri-
+note 23.5 0.5 C4 64 64 ly,/
+note 24 1 G4 82 64 Life
+note 25 0.5 F4 68 64 is
+note 25.5 1 E4 76 64 but
+note 26.5 0.5 D4 64 64 a
+note 27 3 C4 72 64 dream./
+note 30 1.5 C4 80 64 Row,
+note 31.5 1.5 C4 76 64 row,
+note 33 1 C4 80 64 row
+note 34 0.5 D4 66 64 your
+note 34.5 1.5 E4 84 64 boat,/
+note 36 1 E4 78 64 Gent-
+note 37 0.5 D4 64 64 ly
+note 37.5 1 E4 76 64 down
+note 38.5 0.5 F4 66 64 the
+note 39 2.5 G4 90 64 stream./
+note 42 0.5 C5 96 64 Mer-
+note 42.5 0.5 C5 86 64 ri-
+note 43 0.5 C5 82 64 ly,
+note 43.5 0.5 G4 90 64 mer-
+note 44 0.5 G4 80 64 ri-
+note 44.5 0.5 G4 76 64 ly,
+note 45 0.5 E4 84 64 mer-
+note 45.5 0.5 E4 74 64 ri-
+note 46 0.5 E4 70 64 ly,
+note 46.5 0.5 C4 78 64 mer-
+note 47 0.5 C4 68 64 ri-
+note 47.5 0.5 C4 64 64 ly,/
+note 48 1 G4 82 64 Life
+note 49 0.5 F4 68 64 is
+note 49.5 1 E4 76 64 but
+note 50.5 0.5 D4 64 64 a
+note 51 3 C4 72 64 dream./
+
+singer
+level 0
+pan 0.55
+mute 0
+solo 0
+lipservice part 2
+title Ben
+grid 480
+
+voice 2428
+seed 9
+shift 0
+join 0
+glide 9
+dynamics 1.3
+breathiness 0.35
+diction 1
+motion vibrato
+sway 1
+jitter 2
+detune 3
+spread 0
+breath 0.85
+
+tempo 0 100
+meter 0 6/8
+
+note 12 1.5 C3 80 64 Row,
+note 13.5 1.5 C3 76 64 row,
+note 15 1 C3 80 64 row
+note 16 0.5 D3 66 64 your
+note 16.5 1.5 E3 84 64 boat,/
+note 18 1 E3 78 64 Gent-
+note 19 0.5 D3 64 64 ly
+note 19.5 1 E3 76 64 down
+note 20.5 0.5 F3 66 64 the
+note 21 2.5 G3 90 64 stream./
+note 24 0.5 C4 96 64 Mer-
+note 24.5 0.5 C4 86 64 ri-
+note 25 0.5 C4 82 64 ly,
+note 25.5 0.5 G3 90 64 mer-
+note 26 0.5 G3 80 64 ri-
+note 26.5 0.5 G3 76 64 ly,
+note 27 0.5 E3 84 64 mer-
+note 27.5 0.5 E3 74 64 ri-
+note 28 0.5 E3 70 64 ly,
+note 28.5 0.5 C3 78 64 mer-
+note 29 0.5 C3 68 64 ri-
+note 29.5 0.5 C3 64 64 ly,/
+note 30 1 G3 82 64 Life
+note 31 0.5 F3 68 64 is
+note 31.5 1 E3 76 64 but
+note 32.5 0.5 D3 64 64 a
+note 33 3 C3 72 64 dream./
+note 36 1.5 C3 80 64 Row,
+note 37.5 1.5 C3 76 64 row,
+note 39 1 C3 80 64 row
+note 40 0.5 D3 66 64 your
+note 40.5 1.5 E3 84 64 boat,/
+note 42 1 E3 78 64 Gent-
+note 43 0.5 D3 64 64 ly
+note 43.5 1 E3 76 64 down
+note 44.5 0.5 F3 66 64 the
+note 45 2.5 G3 90 64 stream./
+note 48 0.5 C4 96 64 Mer-
+note 48.5 0.5 C4 86 64 ri-
+note 49 0.5 C4 82 64 ly,
+note 49.5 0.5 G3 90 64 mer-
+note 50 0.5 G3 80 64 ri-
+note 50.5 0.5 G3 76 64 ly,
+note 51 0.5 E3 84 64 mer-
+note 51.5 0.5 E3 74 64 ri-
+note 52 0.5 E3 70 64 ly,
+note 52.5 0.5 C3 78 64 mer-
+note 53 0.5 C3 68 64 ri-
+note 53.5 0.5 C3 64 64 ly,/
+note 54 1 G3 82 64 Life
+note 55 0.5 F3 68 64 is
+note 55.5 1 E3 76 64 but
+note 56.5 0.5 D3 64 64 a
+note 57 3 C3 72 64 dream./

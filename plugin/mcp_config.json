@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "lipservice": {
+      "command": "lipservice",
+      "args": [
+        "mcp"
+      ]
+    }
+  }
+}

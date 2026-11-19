@@ -1,0 +1,26 @@
+{
+  "$schema": "https://antigravity.google/schemas/v1/plugin.json",
+  "name": "lipservice",
+  "displayName": "Lip Service",
+  "version": "0.1.0",
+  "description": "Gives a model a voice: text said aloud and written scores sung, in sixteen English voices, on this machine's own CPU",
+  "logo": "assets/icon.svg",
+  "suggestedPrompts": [
+    "Say hello through my speakers",
+    "Write a short song about the tide and sing it to a file",
+    "Read this paragraph aloud in a different voice"
+  ],
+  "author": {
+    "name": "Giles Hall",
+    "url": "https://lipservice.dev"
+  },
+  "homepage": "https://lipservice.dev",
+  "license": "AGPL-3.0-only",
+  "keywords": [
+    "text-to-speech",
+    "tts",
+    "singing",
+    "voice",
+    "audio"
+  ]
+}

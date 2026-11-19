@@ -1,0 +1,33 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "dev.lipservice/lipservice",
+  "title": "Lip Service",
+  "description": "Speech and singing made on your own CPU: sixteen English voices, played aloud or written as WAV.",
+  "version": "0.1.0",
+  "websiteUrl": "https://lipservice.dev",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "lipservice",
+      "version": "0.1.0",
+      "runtimeHint": "uvx",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        }
+      ],
+      "environmentVariables": [
+        {
+          "name": "LIPSERVICE_OUT",
+          "description": "Folder a WAV file goes to when a call names no device and no full path. Unset, such a call is refused.",
+          "format": "filepath"
+        }
+      ]
+    }
+  ]
+}

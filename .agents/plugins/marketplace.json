@@ -1,0 +1,20 @@
+{
+  "name": "lipservice",
+  "interface": {
+    "displayName": "Lip Service"
+  },
+  "plugins": [
+    {
+      "name": "lipservice",
+      "source": {
+        "source": "local",
+        "path": "./plugin"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

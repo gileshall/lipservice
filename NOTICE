@@ -1,0 +1,188 @@
+Lip Service
+Copyright (C) 2026 Giles Hall
+
+Lip Service, its engine and its trained models, is licensed under the GNU Affero General Public
+License, version 3 only (LICENSE). A commercial license is available from the copyright holder
+for use the AGPL does not suit.
+
+Two things inside the model files keep their own licenses: the Vocos weights inside
+fast/melvoc.lsw (MIT, below) and the CMU Pronouncing Dictionary's entries inside lexicon.lsw
+(below).
+
+The engine has no third-party crates and no vendored source. Compiled, it includes the Rust
+standard library (Copyright The Rust Project Developers, under the MIT license or the Apache
+License, Version 2.0).
+
+
+The model files, and what each was made from
+--------------------------------------------
+
+The models are not in the repository. The package fetches them, and they are published with a
+copy of this file.
+
+  base.lsw              the shared speech model       LibriTTS-R, from an LJ Speech start
+  hifi/vox.lsw          hifi's route to sound         LibriTTS-R and VocalSet
+  fast/melvoc.lsw       fast's route for speech       decoder: LibriTTS-R, from the speech model;
+                                                      Vocos: unmodified weights, MIT (below)
+  fast/vocoder.lsw      fast's route for singing      LibriTTS-R, from an LJ Speech start
+  voices/*.lsw          the sixteen voices, and       LibriTTS-R
+  hifi/voices/*.lsw     each one's part for hifi
+  fast/voices/*.lsw     and for fast
+  breaks.lsw            pause model                   LibriTTS-R, from the speech model; taught in
+                                                      part by BERT
+  g2p.lsw               letter-to-sound model         CMU Pronouncing Dictionary
+  lexicon.lsw           pronunciation lexicon         CMU Pronouncing Dictionary, plus Lip
+                                                      Service's own entries
+  motion/straight.lsw,  sung pitch motion             measured from VocalSet
+  motion/vibrato.lsw,
+  motion/wide.lsw
+
+hifi/vox.lsw (sha256 cb78b1bd1317a9a2...) was trained on read speech from LibriTTS-R and
+singing from VocalSet.
+
+The engine's rule for an emphasized word was measured on LibriTTS-R's readers with the
+Crowdsourced LibriTTS Speech Prominence Annotations (Max Morrison, 2023,
+doi:10.5281/zenodo.10402793), used under CC BY 4.0. The annotations themselves are not
+distributed.
+
+The website's choir also plays recorded breaths: short excerpts of VocalSet recordings (CC BY
+4.0, below), served by the site in breaths.bin. They are not in the repository or the package.
+
+
+LibriTTS-R
+----------
+The speech model, the voices, both routes to sound and the pause model were trained on
+LibriTTS-R.
+
+  Yuma Koizumi, Heiga Zen, Shigeki Karita, Yifan Ding, Kohei Yatabe, Nobuyuki Morioka,
+  Michiel Bacchiani, Yu Zhang, Wei Han, and Ankur Bapna. "LibriTTS-R: A Restored Multi-Speaker
+  Text-to-Speech Corpus." Interspeech 2023. https://www.openslr.org/141/
+
+  The LibriTTS-R corpus is made available by Google LLC under a Creative Commons Attribution
+  4.0 International License: https://creativecommons.org/licenses/by/4.0/
+
+LibriTTS-R is derived from LibriTTS (Zen et al., Interspeech 2019), which is derived from
+LibriSpeech (Panayotov et al., ICASSP 2015), which is drawn from LibriVox audiobook recordings
+that their readers released into the public domain. The model files are models trained on the
+recordings; no LibriTTS-R recording is distributed.
+
+Each voice has an invented first name. No reader made, endorses or is associated with Lip
+Service.
+
+Each voice is tuned to one reader of LibriTTS-R, and the package's `voices` command prints that
+reader's number in the corpus.
+
+
+LJ Speech
+---------
+The speech model and the vocoder started from models trained on the LJ Speech Dataset; the mel
+decoder and the pause model were trained from the speech model.
+
+  Keith Ito and Linda Johnson. "The LJ Speech Dataset." 2017.
+  https://keithito.com/LJ-Speech-Dataset/
+
+  The LJ Speech Dataset is in the public domain.
+
+
+VocalSet
+--------
+The sung pitch motions (motion/straight.lsw, motion/vibrato.lsw, motion/wide.lsw) were measured
+from VocalSet's recordings, and hifi's route to sound (hifi/vox.lsw) was trained on them beside
+LibriTTS-R. No VocalSet recording is in the model files.
+
+The website's choir breaths (breaths.bin, served by the site only) are 76 short excerpts of
+VocalSet recordings: the breaths singers took between notes. breaths.json, served beside it,
+names the recording and the time span each one came from. Changes made: each was cut to the
+breath alone, resampled to 24 kHz, set to a common level and raised (5.6 times that level), and
+stored as 16-bit samples. The excerpts remain under VocalSet's license.
+
+  Julia Wilkins, Prem Seetharaman, Alison Wahl, and Bryan Pardo. "VocalSet: A Singing Voice
+  Dataset." ISMIR 2018. Version 1.2. https://doi.org/10.5281/zenodo.1442513
+
+  VocalSet is licensed under a Creative Commons Attribution 4.0 International License:
+  https://creativecommons.org/licenses/by/4.0/
+
+
+Vocos
+-----
+fast/melvoc.lsw contains the weights of Vocos (charactr/vocos-mel-24khz), unchanged except that
+its pointwise layers are stored as 8-bit integers. Vocos was trained by its authors on LibriTTS.
+The engine's Vocos code is Lip Service's own implementation. These weights remain under the MIT
+License below.
+
+  Hubert Siuzdak. "Vocos: Closing the gap between time-domain and Fourier-based neural vocoders
+  for high-quality audio synthesis." arXiv:2306.00814, 2023. https://github.com/gemelo-ai/vocos
+
+MIT License
+
+Copyright (c) 2023 Charactr Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+BERT
+----
+The pause model (breaks.lsw) was trained in part to match the predictions of BERT
+(bert-base-uncased, released by Google under the Apache License 2.0). No part of BERT is
+distributed.
+
+  Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova. "BERT: Pre-training of Deep
+  Bidirectional Transformers for Language Understanding." NAACL 2019. arXiv:1810.04805.
+  https://huggingface.co/google-bert/bert-base-uncased
+
+
+CMU Pronouncing Dictionary
+--------------------------
+The lexicon is the CMU Pronouncing Dictionary, packed, and the letter-to-sound model was trained
+on it. The lexicon also holds entries written for Lip Service, which are not part of the CMU
+dictionary and are under the AGPL with the rest.
+
+Copyright (C) 1993-2015 Carnegie Mellon University. All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+
+1. Redistributions of source code must retain the above copyright
+   notice, this list of conditions and the following disclaimer.
+   The contents of this file are deemed to be source code.
+
+2. Redistributions in binary form must reproduce the above copyright
+   notice, this list of conditions and the following disclaimer in
+   the documentation and/or other materials provided with the
+   distribution.
+
+This work was supported in part by funding from the Defense Advanced
+Research Projects Agency, the Office of Naval Research and the National
+Science Foundation of the United States of America, and by member
+companies of the Carnegie Mellon Sphinx Speech Consortium. We acknowledge
+the contributions of many volunteers to the expansion and improvement of
+this dictionary.
+
+THIS SOFTWARE IS PROVIDED BY CARNEGIE MELLON UNIVERSITY ``AS IS'' AND
+ANY EXPRESSED OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL CARNEGIE MELLON UNIVERSITY
+NOR ITS EMPLOYEES BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.

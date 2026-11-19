@@ -1,0 +1,17 @@
+{
+  "name": "lipservice",
+  "displayName": "Lip Service",
+  "version": "0.1.0",
+  "description": "Gives Claude a voice: text said aloud and written scores sung, in sixteen English voices, on this machine's own CPU",
+  "author": {"name": "Giles Hall"},
+  "homepage": "https://lipservice.dev",
+  "license": "AGPL-3.0-only",
+  "keywords": ["text-to-speech", "tts", "singing", "voice", "audio"],
+  "userConfig": {
+    "sounds": {
+      "type": "directory",
+      "title": "Folder for sound",
+      "description": "Where a WAV file goes when a call names no device to play through and no full path. Left empty, such a call is refused."
+    }
+  }
+}

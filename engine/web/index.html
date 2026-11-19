@@ -1,0 +1,1402 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+<!-- Copyright (C) 2026 Giles Hall -->
+
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<title>lipservice</title>
+<style>
+  :root {
+    color-scheme: dark light;
+    --bg: #0f1112; --panel: #171a1c; --fg: #ebe7e0; --mute: #a0a5a8; --faint: #6c7276; --line: #2a2f33;
+    --made: #4fd1b5; --head: #ffb45e; --pitch: #f2c14e; --comma: #e467c0; --bad: #ff6464; --note: #8ab4ff;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f6f4ef; --panel: #fffdf9; --fg: #1d1f20; --mute: #5d6265; --faint: #8b9093; --line: #e1dcd2;
+      --made: #11866e; --head: #d97a1e; --pitch: #a87b00; --comma: #b5328f; --bad: #cc3030; --note: #2a5bd7;
+    }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { font: 16px/1.5 system-ui, -apple-system, sans-serif; color: var(--fg); background: var(--bg); margin: 0; }
+  .page { max-width: 1000px; margin: 0 auto; padding: 1.6rem 1rem 7.5rem; }
+  header h1 { font-size: 30px; font-weight: 650; letter-spacing: -0.015em; margin: 0; }
+  header p { color: var(--mute); margin: .2rem 0 1.2rem; max-width: 40rem; }
+  .tabs { display: flex; gap: .3rem; padding: .25rem; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; width: fit-content; max-width: 100%; overflow-x: auto; }
+  .tabs button { font: 600 15px system-ui, sans-serif; color: var(--mute); background: transparent; border: 0; border-radius: 9px; padding: .45rem 1rem; cursor: pointer; }
+  .tabs button.on { color: var(--bg); background: var(--fg); }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 1rem; margin: .8rem 0; }
+  .lede { color: var(--mute); margin: 0 0 .8rem; font-size: 15px; }
+  textarea { width: 100%; font: 15px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; padding: .7rem; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: inherit; resize: vertical; }
+  .row { display: flex; flex-wrap: wrap; gap: .6rem 1.2rem; align-items: center; margin: .7rem 0 0; }
+  label { color: var(--mute); font-size: 14px; }
+  select, input[type=number] { font: inherit; font-size: 15px; background: var(--bg); color: inherit; border: 1px solid var(--line); border-radius: 8px; padding: .25rem .4rem; }
+  input[type=number] { width: 4.6rem; }
+  button { font: 600 15px system-ui, sans-serif; padding: .5rem 1.1rem; border-radius: 10px; border: 1px solid var(--made); background: var(--made); color: var(--bg); cursor: pointer; }
+  button.quiet { background: transparent; color: var(--fg); border-color: var(--line); font-weight: 500; }
+  button:disabled { opacity: .4; cursor: default; }
+  .chips { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; margin-top: .6rem; }
+  .chips .what { color: var(--faint); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; min-width: 6.5rem; }
+  .chips button { font-size: 13px; padding: .22rem .7rem; border-radius: 999px; }
+  .chips button.on { border-color: var(--made); color: var(--made); }
+  details { color: var(--mute); font-size: 14px; margin-top: .7rem; }
+  summary { cursor: pointer; }
+  code { font-size: 13px; }
+  .note { color: var(--mute); font-size: 14px; margin: .6rem 0 0; }
+  .knobs { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: .6rem 1.6rem; margin: .7rem 0; }
+  .knobs label { display: grid; grid-template-columns: 1fr 3.6rem; align-items: center; column-gap: .5rem; }
+  .knobs label span { grid-column: 1 / -1; }
+  .knobs input { width: 100%; margin: 0; accent-color: var(--made); }
+  .knobs output { color: var(--fg); font-variant-numeric: tabular-nums; text-align: right; }
+  .part { display: flex; flex-wrap: wrap; gap: .3rem 1.2rem; align-items: center; margin: .35rem 0; }
+  .part b { font-weight: 600; min-width: 10rem; color: var(--fg); }
+  #choir-songs label { display: block; margin-top: .6rem; }
+  #choir-songs textarea { font-size: 13px; }
+  /* the crowd's pad */
+  .padbox { position: relative; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--bg); }
+  #pad { display: block; width: 100%; cursor: crosshair; }
+  #pad-start { position: absolute; inset: 0; margin: auto; width: fit-content; height: fit-content; font-size: 17px; padding: .8rem 1.4rem; box-shadow: 0 6px 30px rgb(0 0 0 / .35); }
+  .read { font: 600 15px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--fg); margin-top: .6rem; min-height: 1.5em; }
+  /* the transport, always at hand */
+  .bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; border-top: 1px solid var(--line);
+    background: color-mix(in srgb, var(--bg) 86%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    padding: .65rem 1rem calc(.65rem + env(safe-area-inset-bottom)); }
+  .bar .in { max-width: 1000px; margin: 0 auto; display: flex; gap: .7rem; align-items: center; }
+  #status { flex: 1; min-width: 0; color: var(--mute); font-size: 13.5px; line-height: 1.35; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  #status.err { color: var(--bad); }
+  #go { min-width: 6.5rem; }
+  /* figures */
+  .viz { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem; margin-top: 1rem; }
+  .viz figure { margin: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: .8rem .9rem .9rem; min-width: 0; }
+  .viz .wide { grid-column: 1 / -1; }
+  .viz h2 { font: 650 11.5px system-ui, sans-serif; text-transform: uppercase; letter-spacing: .09em; color: var(--faint); margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .6rem; }
+  .viz h2 .tools { margin-left: auto; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .3rem; }
+  .viz h2 .files { display: flex; align-items: center; gap: .3rem; margin-left: .5rem; }
+  .viz h2 button { font-size: 11.5px; padding: .12rem .55rem; text-transform: none; letter-spacing: 0; }
+  .viz h2 button.wanted { border-color: var(--made); color: var(--made); }
+  .viz figcaption { color: var(--mute); font-size: 13px; margin: .2rem 0 .6rem; line-height: 1.4; }
+  .viz canvas { display: block; width: 100%; }
+  .stagebox { position: relative; }
+  .tip { position: absolute; top: 4px; right: 4px; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: .45rem .7rem; font-size: 12.5px; line-height: 1.45; max-width: 62%; box-shadow: 0 6px 24px rgb(0 0 0 / .25); }
+  .tip b { display: block; font-size: 13px; }
+  .tip div { color: var(--mute); }
+  .key { display: flex; flex-wrap: wrap; gap: .2rem .9rem; font-size: 12px; color: var(--mute); margin-top: .5rem; }
+  .key i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: .35rem; vertical-align: -1px; }
+  .key .pick { cursor: pointer; border-radius: 6px; padding: .05rem .4rem; margin: 0 -.4rem; }
+  .key .pick:hover, .key .pick.on { color: var(--fg); background: var(--panel); }
+  #stage { cursor: pointer; }
+  /* the chain */
+  .chain { display: grid; grid-template-columns: repeat(var(--wide, 5), minmax(0, 1fr)); gap: .7rem 1.1rem; }
+  .step { position: relative; display: flex; flex-direction: column; gap: .1rem; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: .5rem .65rem; }
+  .step::after { content: none; position: absolute; right: -.8rem; top: 50%; width: 7px; height: 7px; border-top: 1.5px solid var(--faint); border-right: 1.5px solid var(--faint); transform: translateY(-50%) rotate(45deg); }
+  .step.go-wide::after { content: ""; }
+  .step b { font-size: 13.5px; }
+  .step span { font-size: 11.5px; color: var(--mute); line-height: 1.3; }
+  .step output { font: 600 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--made); min-height: 1.4em; margin-top: .15rem; overflow-wrap: anywhere; }
+  .meter { display: block; height: 5px; background: var(--line); border-radius: 3px; overflow: hidden; margin-top: auto; }
+  .meter > i { display: block; height: 100%; width: 0; background: var(--made); }
+  .meter.bad > i { background: var(--bad); }
+  .curve { width: 100%; height: 70px; margin-top: .2rem; }
+  /* the listener's notes */
+  .notes { margin-top: .5rem; font-size: 14px; }
+  .notes .how { color: var(--faint); font-size: 12.5px; }
+  .notes form { display: flex; gap: .5rem; align-items: center; margin-top: .5rem; }
+  .notes form b, .notes li button.at { font: 600 13px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--note); }
+  .notes input[type=text] { flex: 1; min-width: 0; font: inherit; background: var(--bg); color: inherit; border: 1px solid var(--line); border-radius: 8px; padding: .3rem .5rem; }
+  .notes button { font-size: 13px; padding: .25rem .7rem; }
+  .notes ol { list-style: none; margin: .5rem 0 0; padding: 0; }
+  .notes li { display: flex; gap: .6rem; align-items: baseline; padding: .22rem 0; border-top: 1px solid var(--line); }
+  .notes li i { font: 700 10px system-ui, sans-serif; background: var(--note); color: var(--bg); border-radius: 3px; padding: 0 .3rem; min-width: 1.1rem; text-align: center; }
+  .notes li button.at { background: transparent; border: 0; padding: 0; cursor: pointer; }
+  .notes li span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .notes li small { color: var(--faint); }
+  .notes li button.gone { background: transparent; border: 0; color: var(--faint); padding: 0 .3rem; }
+  /* figures in words */
+  #nums { display: grid; grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr)); gap: .6rem 1.2rem; margin: .8rem 0 0; }
+  #nums b { display: block; font-size: 24px; font-weight: 650; color: var(--made); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+  #nums span { color: var(--mute); font-size: 12.5px; line-height: 1.3; display: block; }
+  .about { margin-top: 1.4rem; }
+  @media (max-width: 1000px) {
+    .chain { grid-template-columns: repeat(var(--half, 4), minmax(0, 1fr)); }
+    .step.go-wide::after { content: none; }
+    .step.go-half::after { content: ""; }
+  }
+  @media (max-width: 720px) {
+    .viz { grid-template-columns: 1fr; }
+    .chain { grid-template-columns: 1fr; gap: .8rem; }
+    .step { display: grid; grid-template-columns: 1fr auto; column-gap: .8rem; align-items: baseline; }
+    .step b { grid-area: 1 / 1; }
+    .step output { grid-area: 1 / 2; margin: 0; text-align: right; min-height: 0; }
+    .step span, .step .meter, .step .curve { grid-column: 1 / -1; }
+    .step .meter { margin-top: .35rem; }
+    .step.go-half::after { content: none; }
+    .step.go-down::after { content: ""; right: auto; left: 1.2rem; top: auto; bottom: -.62rem; transform: rotate(135deg); }
+    header h1 { font-size: 26px; }
+    .page { padding-top: 1.1rem; }
+    .card { padding: .8rem; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+<header>
+  <h1>lipservice</h1>
+  <p>Speech and singing, made here in your browser as you listen. Nothing leaves this page.</p>
+  <p id="route-label" hidden><label>sound <select id="route"></select></label></p>
+</header>
+
+<nav class="tabs" role="tablist">
+  <button id="t-say" class="on" role="tab">Speak</button><button id="t-sing" role="tab">Sing</button><button id="t-choir" role="tab">Choir</button><button id="t-crowd" role="tab">Crowd</button>
+</nav>
+
+<section id="say" class="card">
+  <textarea id="text" rows="6" aria-label="What to say"></textarea>
+  <div class="chips" id="say-examples"><span class="what">Try</span></div>
+  <div class="chips" id="say-long"><span class="what">Passages</span></div>
+  <div class="chips" id="say-long-ssml"><span class="what">With SSML</span></div>
+  <div class="row">
+    <label><input type="checkbox" id="ssml"> SSML</label>
+    <label>rate <input type="number" id="rate" value="1" min="0.5" max="2" step="0.05"></label>
+    <label>pitch <input type="number" id="shift" value="0" min="-12" max="12" step="1"> st</label>
+  </div>
+</section>
+
+<section id="sing" class="card" hidden>
+  <textarea id="song" rows="10" aria-label="The song"></textarea>
+  <div class="chips" id="sing-examples"><span class="what">Songs</span></div>
+  <div class="row">
+    <label>transpose <input type="number" id="transpose" value="0" min="-24" max="24" step="1"> st</label>
+  </div>
+  <details><summary>How it sings</summary>
+    <div class="row">
+      <label>pitch <select id="sing-motion">
+        <option value="">machine vibrato</option><option value="vibrato">a singer's own, with vibrato</option><option value="wide">a singer's own, wide vibrato</option><option value="straight">a singer's own, straight tone</option>
+      </select></label>
+      <label><input type="checkbox" id="sing-diction"> sung diction</label>
+    </div>
+    <div class="knobs" id="sing-how"></div>
+    <p>With a singer's own pitch, the voice's pitch moves on each note as one trained singer's did (VocalSet's singers;
+    the seed picks which, and so that singer's own rate and depth of vibrato). Sung diction stresses every vowel. The
+    changes are heard at the next Go.</p>
+  </details>
+  <details><summary>Song format</summary>
+    <p>A line each: <code>bpm 90</code>, <code>rest 0.5</code> (beats), or a word and its notes, one a syllable,
+    <code>NOTE:BEATS</code> (<code>C4</code>, <code>F#3</code>, <code>Bb2</code>), notes joined by <code>+</code> sharing a syllable.
+    Lines starting <code>#</code> are comments.</p>
+    <p>A <code>vibrato</code> line between words writes the vibrato's size from that beat on, as a pedal is written beside
+    a part's notes: 1 is the voice's own, 0 a straight tone. <code>vibrato 0</code> jumps to none;
+    <code>vibrato 1.5:3</code> glides to one and a half times over the next 3 beats; several in a line follow one another, so
+    <code>vibrato 0 0:2 2:4 0:2</code> is none, held for 2 beats, grown to twice over 4, gone again over 2. The line takes no
+    time in the song, and the last size holds until the next line. Of a singer's own pitch it sizes the vibrato and leaves
+    the slower drift. In a choir each part has its own (Parts as song files); the piece Vibrato, Written shows it. The
+    knob "vibrato alone" is what 1 comes to: every size written is multiplied by it.</p>
+  </details>
+</section>
+
+<section id="choir" class="card" hidden>
+  <div class="chips" id="choir-examples"></div>
+  <p class="note" id="choir-source"></p>
+  <div class="row">
+    <label>room <select id="choir-room">
+      <option value="card">hall</option><option value="drier">drier</option><option value="driest">driest</option><option value="bare">no room</option>
+    </select></label>
+    <label>pitch <select id="choir-motion">
+      <option value="straight">singers' own, straight tone</option><option value="vibrato">singers' own, with vibrato</option><option value="wide">singers' own, wide vibrato</option><option value="">machine vibrato</option>
+    </select></label>
+  </div>
+  <details><summary>Voices</summary><div id="choir-parts"></div></details>
+  <details><summary>How it sings</summary>
+  <div class="knobs" id="choir-how"></div>
+  <p>Each voice's pitch moves on its notes as one trained singer's did (VocalSet's singers, a different one for each
+  voice, with that singer's own rate and depth of vibrato), each singer a touch off the
+  beat and off the pitch, breaths taken in the rests with the note before shortened to make room. Each singer has a
+  seat on a stage and the choir sounds in a room. Each voice sings its part as in the Sing tab: as written for a woman,
+  an octave down for a man. The voices are spread over several workers and mixed as they are made.</p></details>
+  <details><summary>Parts as song files</summary><div id="choir-songs"></div></details>
+</section>
+
+<section id="crowd" class="card" hidden>
+  <p class="lede">A crowd singing four chords round and round, each voice one note a chord. Drag on the pad: across
+  sets one thing and up another. With the voices on an axis, the dashed line is how many this device sings at once,
+  measured as it sings; past it the sound runs dry.</p>
+  <div class="padbox"><canvas id="pad" aria-label="The crowd's pad"></canvas><button id="pad-start" disabled>Start the crowd</button></div>
+  <div class="row">
+    <label>across <select id="pad-x"></select></label>
+    <label>up <select id="pad-y"></select></label>
+  </div>
+  <div class="read" id="pad-read"></div>
+</section>
+
+<div class="row" id="opts">
+  <label id="voice-label">voice <select id="voice" disabled></select></label>
+  <label id="seed-label">seed <input type="number" id="seed" value="0" min="0" step="1"></label>
+</div>
+
+<div id="nums"></div>
+
+<section class="viz" id="viz" hidden>
+  <figure class="wide" id="f-stage">
+    <h2>The stage</h2>
+    <figcaption id="c-stage"></figcaption>
+    <div class="stagebox"><canvas id="stage"></canvas><div id="stage-card" class="tip" hidden></div></div>
+    <div class="key" id="k-stage"></div>
+  </figure>
+  <figure class="wide" id="f-time">
+    <h2>As it is made <span class="tools"><button class="quiet" id="follow" hidden>Back to now</button><button class="quiet" id="zoom">Whole take</button><span class="files">Download <button class="quiet" id="file-wav" disabled>WAV</button><button class="quiet" id="file-flac" disabled>FLAC</button><button class="quiet" id="file-mp3" disabled>MP3</button></span></span></h2>
+    <figcaption id="c-time"></figcaption>
+    <canvas id="time"></canvas>
+    <div class="notes" id="notes" hidden>
+      <div class="row"><button class="quiet" id="note-add">Note here</button><span class="how">marks what you are hearing (or press N); shift-click the time line to mark a place by eye. Space plays and pauses; the arrows move the mark a tenth of a second (a second with shift), or with no note open your place two seconds (paused, it stays paused); Enter plays from two seconds before the mark. While writing the note: shift-space, alt-arrows and shift-Enter</span></div>
+      <form id="note-form" hidden><b id="note-at"></b><input type="text" id="note-text" aria-label="The note" autocomplete="off"><button id="note-save">Save</button><button type="button" class="quiet" id="note-cancel">Cancel</button></form>
+      <ol id="note-list"></ol>
+    </div>
+  </figure>
+  <figure class="wide" id="f-chain">
+    <h2>The chain</h2>
+    <figcaption id="c-chain"></figcaption>
+    <div class="chain" id="chain"></div>
+  </figure>
+  <figure id="f-pace">
+    <h2>Made against heard</h2>
+    <figcaption id="c-pace"></figcaption>
+    <canvas id="pace"></canvas>
+  </figure>
+  <figure id="f-scope">
+    <h2>At the speaker</h2>
+    <figcaption>Left against right, upright where the ears agree, and the spectrum with its recent peaks.</figcaption>
+    <canvas id="scope"></canvas>
+  </figure>
+</section>
+
+<details class="about"><summary>About</summary>
+  <p>The engine is written in Rust and runs here as WebAssembly, in workers. Speech: the text is spelled out (numbers,
+  dates) and each word read in its sense; a dictionary (CMU, BSD) and a model for the words not in it give the phones;
+  a small model, taught by BERT, puts pauses where readers pause; a score model gives each sound its length, pitch and
+  voice; <span id="about-sound">a decoder turns that into a spectrum and Vocos (MIT) turns the spectrum into sound. Singing goes from the
+  score through a source-filter vocoder.</span> The voices are LibriTTS-R speakers (CC BY 4.0). The choir's pitch motion and
+  breaths are learned from and cut from VocalSet (Wilkins, Seetharaman, Wahl and Pardo, ISMIR 2018; CC BY 4.0). SSML
+  covers prosody (rate, pitch, volume), emphasis, breaks, say-as, phoneme and sub; a yes/no question rises at its end.</p>
+  <p>The sound keeps playing with the screen off where the browser allows it: the page asks for a playback audio
+  session, and is fed by its workers' messages rather than timers.</p>
+</details>
+</div>
+
+<div class="bar"><div class="in">
+  <div id="status" role="status">Loading the engine…</div>
+  <button id="stop" class="quiet" disabled>Stop</button>
+  <button id="go" disabled>Speak</button>
+</div></div>
+
+<script type="module">
+import { PASSAGES } from "./passages.js";
+import { Choir } from "./choir.js";
+import { Deck } from "./deck.js";
+import { Conductor } from "./conduct.js";
+import { CHOIRS, VIBRATO, arrange } from "./choirs.js";
+import { sized } from "./perform.js";
+import { Crowd, MAX, PARAMS, noteName, chordName } from "./live.js";
+import { Take, SR } from "./take.js";
+import { Timeline } from "./timeline.js";
+import { Stage } from "./stage.js";
+import { Chain } from "./chain.js";
+import { Pace } from "./pace.js";
+import { Scope } from "./scope.js";
+import { Pad } from "./pad.js";
+import { hue, hsl, ROLE, clock, stamp } from "./paint.js";
+import { Notes, digest } from "./notes.js";
+import { FORMATS, write } from "./files.js";
+import { RANGES } from "./voices_ranges.js";
+
+const $ = (id) => document.getElementById(id);
+
+const SAY = {
+  "Hello": ["Hello! This voice is being made right here, in your browser, a few milliseconds at a time.", false],
+  "Question": ["Are you coming home tonight? Who told you that?", false],
+  "Emphasis": ['<speak>I never said <emphasis level="strong">she</emphasis> stole my money.</speak>', true],
+  "Aside": ['<speak>The key is under the mat. <break time="400ms"/><prosody rate="slow" pitch="-2st" volume="soft">Don\'t tell anyone.</prosody> <break time="300ms"/>I mean <emphasis level="strong">anyone</emphasis>.</speak>', true],
+  "Numbers": ['<speak>Your table is ready at <say-as interpret-as="time">7:45</say-as>, party of <say-as interpret-as="cardinal">12</say-as>. Spell it: <say-as interpret-as="characters">SSML</say-as>.</speak>', true],
+  "Fast": ['<speak><prosody rate="x-fast">This is the part of the advertisement where everything is said very quickly so nobody notices.</prosody></speak>', true],
+};
+const SING = {
+  "Amazing Grace": `# Amazing Grace (New Britain, 1829), first two lines; 3/4
+bpm 90
+rest 0.5
+amazing D4:1 G4:2 B4:0.5+G4:0.5
+grace B4:2
+how A4:1
+sweet G4:2
+the E4:1
+sound D4:2
+that D4:1
+saved G4:2
+a B4:0.5+G4:0.5
+wretch B4:2
+like A4:1
+me D5:3
+rest 0.5`,
+  "Twinkle": `# Twinkle, Twinkle, Little Star (traditional)
+bpm 100
+twinkle C4:1 C4:1
+twinkle G4:1 G4:1
+little A4:1 A4:1
+star G4:2
+how F4:1
+I F4:1
+wonder E4:1 E4:1
+what D4:1
+you D4:1
+are C4:2
+rest 0.5`,
+};
+
+const CAPTION = {
+  say: "The words and their sounds as long as each lasts, the pauses the model added (magenta), the pitch with its rising questions, then the spectrogram and the wave. The teal line is how far the engine has got; the warm one is what you hear. Click to play from there; drag to look about.",
+  sing: "The notes as written, the pitch as sung over them, then the spectrogram and the wave. The teal line is how far the engine has got; the warm one is what you hear. Click to play from there; drag to look about.",
+  choir: "Each part a lane, bright where it sings loud, its breaths marked; what the compressor (amber) and limiter (red) take off; then the spectrogram and the wave of the whole room. Click to play from there, made or not; change the room, the pitch or a voice as it plays and it is sung again from just ahead of what you hear, the rest dimmed until it is. Drag to look about.",
+};
+const CHAIN = {
+  say: "Each step from your text to the speaker, and what it is doing at the word you hear.",
+  sing: "Each step from the song to the speaker, and what it is doing at the note you hear. The singer's line is how far the sung pitch is from the written note.",
+  choir: "Each step from the parts to the speaker. The bars are how much of what you hear is each: the singers straight from their seats, the echo, the halls; and what the limiter takes off. The curve is the compressor's, the dot where the choir is on it now.",
+  crowd: "Each step from the notes to the speaker. The bars are how much of what you hear is each: the voices straight from their seats, the echo, the halls; and what the limiter takes off. The curve is the compressor's, the dot where the crowd is on it now.",
+};
+const PACE = {
+  take: "Seconds of sound made (teal) and heard (warm) from where it plays, against the seconds since you asked. The dashed line is real time from the first sound: everything above it is made faster than it plays, and the shading is the sound in hand.",
+  crowd: "The voices singing, against how many the workers keep up with (dashed), over the last 30 seconds. A red mark is a moment the speaker ran dry.",
+};
+
+// id: one rising count for every job and utterance. live: the crowd's utterance while it sings.
+// take: what the figures show and the deck plays; take.job: its making on the page's worker
+// (speech and song), null once over.
+let mode = "say", voices = [], vox = null, route = null, id = 0, live = 0, ctx = null, player = null, making = null;
+let take = null, crowd = null, crowdAt = null, hist = [], showing = null, choirName = null, sung = null;
+let solo = new Set(); // the singers of the choir sung (its parts, by number) asked to be heard alone; none: all are heard
+let notes = null, noting = null; // the listener's notes, where the site keeps them; the sample one is being written for
+let saving = null, writing = false; // the format the take is wanted in as a file once all of it is made; a file is being written
+// the sound asked for in the page's address (?route=fast; routes.js), or the site's first
+const wanted = new URLSearchParams(location.search).get("route");
+const worker = new Worker(wanted ? `worker.js?route=${encodeURIComponent(wanted)}` : "worker.js", { type: "module" });
+const status = (s, err = false) => { $("status").textContent = s; $("status").className = err ? "err" : ""; };
+const numbers = (rows = []) => {
+  $("nums").replaceChildren(...rows.map(([big, small]) => {
+    const d = document.createElement("div"), b = document.createElement("b"), s = document.createElement("span");
+    b.textContent = big; s.textContent = small; d.append(b, s);
+    return d;
+  }));
+};
+const chip = (name, onclick, quiet = true) => {
+  const b = document.createElement("button");
+  if (quiet) b.className = "quiet";
+  b.textContent = name;
+  b.onclick = onclick;
+  return b;
+};
+
+for (const [name, [text, ssml]] of Object.entries(SAY)) $("say-examples").append(chip(name, () => { $("text").value = text; $("ssml").checked = ssml; }));
+for (const [row, ssml] of [["say-long", false], ["say-long-ssml", true]]) {
+  for (const p of PASSAGES) $(row).append(chip(p.name, () => { $("text").value = ssml ? p.ssml : p.plain; $("ssml").checked = ssml; }));
+}
+for (const [name, song] of Object.entries(SING)) $("sing-examples").append(chip(name, () => { $("song").value = song; }));
+$("text").value = SAY.Hello[0];
+$("song").value = SING["Amazing Grace"];
+
+const GO = { say: "Speak", sing: "Sing", choir: "Sing", crowd: "Start" };
+function tab(m) {
+  mode = m;
+  for (const t of ["say", "sing", "choir", "crowd"]) {
+    $(`t-${t}`).classList.toggle("on", m === t);
+    $(`t-${t}`).setAttribute("aria-selected", m === t);
+    $(t).hidden = m !== t;
+  }
+  $("voice-label").hidden = m === "choir" || m === "crowd";
+  $("seed-label").hidden = m === "crowd";
+  $("go").textContent = GO[m];
+  tune();
+  if (m === "choir") warm();
+  if (m === "crowd" && crowd) crowd.prepare();
+  wake();
+}
+for (const t of ["say", "sing", "choir", "crowd"]) $(`t-${t}`).onclick = () => tab(t);
+
+// a woman sings a written melody an octave up from a man
+function tune() {
+  const v = voices.find((v) => v.name === $("voice").value);
+  if (mode === "sing" && v) $("transpose").value = v.sex === "F" ? 0 : -12;
+}
+$("voice").onchange = tune;
+
+function fillVoices(select) {
+  const groups = new Map();
+  for (const v of voices) {
+    const o = document.createElement("option"); o.value = v.name; o.textContent = v.label;
+    if (!v.group) { select.append(o); continue; }
+    if (!groups.has(v.group)) {
+      const g = document.createElement("optgroup"); g.label = v.group; groups.set(v.group, g); select.append(g);
+    }
+    groups.get(v.group).append(o);
+  }
+}
+
+// ------------------------------------------------------------------ the speaker
+
+// The speaker (player.js) plays the chunks back to back and fades every start, end and stop. It is
+// made on the first press, as a browser starts audio only from one; asked for as playback (a
+// music player's audio session) so that it plays on with the screen off.
+// A context that has played and is no longer running was silenced by the system (the screen locked,
+// a call, another app's sound, the lock screen's pause). It still holds sound it was given and had
+// not played, and started again it plays that first: a bit of the last piece ahead of the next. So
+// a press finds it closed and a new one made, which holds nothing. (Coming back to the page while a
+// piece is still going starts the same one again, below: there what it holds is the piece's own.)
+const scope = new Scope($("scope"));
+let ran = false; // the context has played
+function speaker() {
+  if (ctx && ran && ctx.state !== "running") {
+    const old = ctx;
+    old.onstatechange = null;
+    player?.disconnect();
+    old.close().catch((e) => console.error("the silenced audio context would not close:", e));
+    ctx = null;
+    making = null; // the old player takes what is still on its way to it, until the new one is made
+    ran = false;
+  }
+  if (!ctx) {
+    if (navigator.audioSession) navigator.audioSession.type = "playback";
+    const made = new AudioContext({ sampleRate: SR });
+    ctx = made;
+    made.onstatechange = () => {
+      if (made.state === "running") ran = true;
+      else if (active()) status(`The browser has ${made.state === "interrupted" ? "interrupted" : "paused"} the sound.`, true);
+    };
+    if (made.state === "running") ran = true;
+  }
+  ctx.resume().catch((e) => status(`The browser would not start audio: ${e.message}`, true));
+  making ??= ctx.audioWorklet.addModule("player.js").then(() => {
+    player = new AudioWorkletNode(ctx, "player", { numberOfInputs: 0, outputChannelCount: [2] });
+    player.onprocessorerror = () => status("The audio player failed (the browser's console has why). Reload the page.", true);
+    player.port.onmessage = ({ data: m }) => heard(m);
+    player.connect(ctx.destination);
+    scope.attach(ctx, player);
+  });
+}
+const toPlayer = (m, t = []) => making.then(() => player.port.postMessage(m, t)).catch((e) => status(`The audio player did not start: ${e.message}`, true));
+
+// back from the background: a context the system paused while live is started again
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible") return;
+  wake();
+  if (!ctx || !active() || ctx.state === "running") return;
+  ctx.resume().then(() => status("Playing again: the browser had paused the sound while the page was hidden.", true))
+    .catch((e) => status(`The browser would not start the sound again: ${e.message}`, true));
+});
+
+// the lock screen's controls: what is playing, and a pause that stops it
+const session = "mediaSession" in navigator ? navigator.mediaSession : null;
+session?.setActionHandler("pause", () => halted());
+function nowPlaying(title) {
+  if (!session) return;
+  session.metadata = new MediaMetadata({ title, artist: "lipservice", album: "made in your browser" });
+  session.playbackState = title ? "playing" : "none";
+}
+
+// The deck (deck.js) plays the take from wherever it is set down; the conductor (conduct.js) keeps
+// a choir's take made ahead of it and makes it again when what is sung changes.
+const deck = new Deck({
+  send: toPlayer,
+  clock: () => ctx.currentTime * SR,
+  latency: () => (ctx.outputLatency || 0) * SR,
+  nextId: () => ++id,
+  ahead: (t, c) => (t.kind === "choir" ? cond.ahead(t, c) : true),
+  onBegin: () => {
+    if (deck.run.holds) status("Playing on.");
+    else if (take.kind === "choir") status(`Singing… first sound ${Math.round(deck.run.begun)} ms after you asked.`);
+    lamp();
+  },
+  // the speaker ran dry: it waits, and plays on once the engine is far enough ahead to reach the end
+  onHold: () => {
+    status("The engine fell behind what was playing. Waiting for it to get far enough ahead to play on without stopping…", true);
+    lamp();
+  },
+  onEnd: (m) => {
+    lamp();
+    const n = deck.run.holds;
+    if (!m.stopped && n) status(`${$("status").textContent} Playback waited for the engine ${n} time${n > 1 ? "s" : ""}.`, true);
+    else if (!m.stopped && m.stalls) status(`${$("status").textContent} Playback stalled ${m.stalls} time${m.stalls > 1 ? "s" : ""} waiting for the engine.`, true);
+  },
+  onSwap: (t) => {
+    take = t;
+    timeline.swap(t);
+    setStage(t);
+    listNotes();
+    wake();
+  },
+});
+
+// something is playing, about to, or being made
+const active = () => live !== 0 || deck.active || cond.job !== null || (take?.job ?? null) !== null;
+function lamp() {
+  const on = active();
+  $("stop").disabled = !on;
+  if (!on) nowPlaying(null);
+  fileLamp();
+  wake();
+}
+
+function heard(m) {
+  const now = performance.now();
+  if (!live || m.id !== live) { deck.hear(m); return; }
+  if (m.type === "at") {
+    crowdAt = m;
+    crowd.hear(m.n, m.stalls);
+    const s = crowd.stats();
+    hist.push({ t: now, voices: s.voices, capacity: s.capacity, stalls: s.stalls });
+    while (hist.length > 2 && hist[0].t < now - 32000) hist.shift();
+  } else if (m.type === "ended") {
+    live = 0;
+    lamp();
+    if (m.stalls) status(`${$("status").textContent} Playback stalled ${m.stalls} time${m.stalls > 1 ? "s" : ""} waiting for the engine.`, true);
+  }
+}
+
+// Everything stops: the crowd, a making on the page's worker (what it made stays, to be played),
+// the choir's making and the speaker.
+function stop() {
+  if (live) {
+    crowd.stop();
+    toPlayer({ type: "stop", id: live });
+    live = 0;
+    $("pad-start").hidden = false;
+  }
+  if (take && (take.job ?? null) !== null) {
+    worker.postMessage({ type: "stop", id: take.job });
+    take.job = null;
+    take.head = null;
+    take.close();
+  }
+  cond.stop();
+  lamp();
+}
+const halted = () => { stop(); unfile(); status("Stopped."); };
+$("stop").onclick = halted;
+
+// ------------------------------------------------------------------ the choir and the crowd
+
+// The choir (choir.js): its parts over several workers, mixed here; the conductor puts the sound on
+// the take's tape and the deck plays it.
+const choir = new Choir({
+  main: worker,
+  spawn: () => new Worker(`worker.js?light&route=${route}`, { type: "module" }),
+  cores: navigator.hardwareConcurrency || 2,
+  onLoaded: (ms) => { if (!active() && (mode === "choir" || mode === "crowd")) status(`The voices are ready (loaded in ${(ms / 1000).toFixed(1)} s).`); },
+  onSound: (j, y, at) => { cond.sound(j, y, at); fileProgress(); wake(); },
+  onOpen: (j) => cond.opened(j),
+  onDone: (j, s) => cond.done(j, s),
+  onError: (message) => cond.error(message),
+});
+const cond = new Conductor({
+  choir, deck,
+  lead: 30, // s of a choir made past where a listener paused
+  nextId: () => ++id,
+  onOpen: (t) => opened(t),
+  onError: (message) => { stop(); unfile(); status(message, true); },
+  onDone: (t, s) => {
+    lamp();
+    if (s.secs) {
+      const n = t.settings.parts.filter((p) => !p.mute).length, of = n < s.parts ? `${n} of ${s.parts}` : `${s.parts}`;
+      status(made(t) ? `${(t.length / SR).toFixed(1)} s of choir from ${of} voices.` : `${s.mix.toFixed(1)} s of choir made, from ${of} voices.`);
+      numbers([
+        [`${s.speed.toFixed(0)}×`, `seconds of singing made a second, every voice counted: ${s.secs.toFixed(0)} s in ${s.wall.toFixed(1)} s`],
+        [`${s.perCompute.toFixed(1)}×`, `a second of compute: ${s.secs.toFixed(0)} s in ${s.busy.toFixed(1)} s of work, on ${s.workers} worker${s.workers > 1 ? "s" : ""}`],
+        [`${Math.round(cond.lat)} ms`, "from asking the singers to their first sound"],
+        [`${s.realtime.toFixed(1)}×`, `the choir made as fast as it plays: ${s.mix.toFixed(1)} s in ${s.wall.toFixed(1)} s`],
+      ]);
+    }
+    fileSoon();
+  },
+});
+
+// ------------------------------------------------------------------ the take as a file
+
+// The take kept as a file (files.js), written here on the page once all of it is made: a choir is
+// made through for it (the conductor's fill()), speech and a song are waited for. The wish
+// (`saving`) stays with what is sung through its changes, and is over when the file is written,
+// at a stop, at an error, or when something else is spoken or sung.
+const FILE_BUTTONS = Object.keys(FORMATS).map((f) => [f, $(`file-${f}`)]);
+for (const [f, b] of FILE_BUTTONS) {
+  b.title = `Download what was made as ${FORMATS[f].label}: ${FORMATS[f].what}`;
+  b.onclick = () => want(f);
+}
+// all of the take is made
+const made = (t) => t.closed && t.length > 0 && t.end(0) >= t.length;
+// the take a file would be of: the choir as it is to be sung now, though the old way still plays
+const filed = () => (take?.kind === "choir" ? cond.cur : take);
+function fileLamp() {
+  for (const [f, b] of FILE_BUTTONS) {
+    b.disabled = !filed() || writing;
+    b.classList.toggle("wanted", saving === f);
+  }
+}
+function unfile() {
+  if (saving === null) return;
+  saving = null;
+  cond.fill(false);
+  fileLamp();
+}
+// a click on a format: a file of it is wanted; on the one wanted already: no longer
+function want(format) {
+  if (!filed() || writing) return;
+  if (saving === format) {
+    unfile();
+    status("No file will be written.");
+    return;
+  }
+  saving = format;
+  fileLamp();
+  fileSoon();
+}
+// the file wanted is written if its take is whole, and the take made on towards it if not
+function fileSoon() {
+  const t = filed();
+  if (saving === null || writing || !t) return;
+  if (made(t)) {
+    writeFile(t, saving);
+  } else if (t.kind === "choir") {
+    cond.fill();
+    lamp();
+    fileShare = null;
+    fileProgress();
+  } else if ((t.job ?? null) !== null) {
+    status(`The ${FORMATS[saving].label} will be written once the ${t.kind === "say" ? "speech" : "song"} is made.`);
+  } else {
+    unfile();
+    status("There is no sound to download.", true);
+  }
+}
+// how much of the choir wanted as a file is made
+let fileShare = null;
+function fileProgress() {
+  const t = filed();
+  if (saving === null || writing || t?.kind !== "choir") return;
+  const share = t.length ? Math.floor(100 * t.spans.reduce((a, [from, to]) => a + to - from, 0) / t.length) : 0;
+  if (share === fileShare) return;
+  fileShare = share;
+  status(`Making the rest of the choir to write the ${FORMATS[saving].label}: ${share}% of it is made.`);
+}
+const slug = (text) => text.normalize("NFKD").toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 48).replace(/^-|-$/g, "");
+// a file's name: the choir's (and who of it is heard, if not all), the song's title, or the first
+// words spoken
+function fileName(t) {
+  const heard = t.kind === "choir" ? t.settings.parts.filter((p) => !p.mute) : [];
+  const alone = heard.length === (t.settings?.parts.length ?? 0) ? "" : heard.length > 2 ? ` ${heard.length} voices` : ` ${heard.map((p) => p.name).join(" ")}`;
+  const of = t.kind === "choir" ? `${sung}${alone}` : t.kind === "sing" ? t.text.match(/^#\s*(.+)$/m)?.[1] : t.asked.text.replace(/<[^>]+>/g, " ").trim().split(/\s+/).slice(0, 6).join(" ");
+  return slug(of ?? "") || { say: "speech", sing: "song", choir: "choir" }[t.kind];
+}
+// Written a slice at a time, so the page goes on drawing and answering, then handed to the browser
+// to keep. The take's sound is copied first: it may be sung another way meanwhile.
+async function writeFile(t, format) {
+  const f = FORMATS[format];
+  saving = null;
+  writing = true;
+  fileLamp();
+  try {
+    const name = `${fileName(t)}.${f.ext}`, [l, r] = t.cut(0, t.length);
+    const g = write(format, r ? [l, r] : [l], SR);
+    let step = g.next();
+    while (!step.done) {
+      status(`Writing ${name}: ${Math.floor(100 * step.value)}%`);
+      await new Promise((go) => setTimeout(go));
+      for (const until = performance.now() + 40; !step.done && performance.now() < until;) step = g.next();
+    }
+    const { bytes } = step.value;
+    const url = URL.createObjectURL(new Blob([bytes], { type: f.mime })), a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    const size = bytes.length < 1e6 ? `${Math.ceil(bytes.length / 1000)} kB` : `${(bytes.length / 1e6).toFixed(1)} MB`;
+    status(`Wrote ${name}: ${stamp(t.length / SR)}, ${size}.`);
+  } catch (e) {
+    status(`The ${f.label} could not be written: ${e.message}`, true);
+  } finally {
+    writing = false;
+    fileLamp();
+  }
+}
+
+// The knobs of how a song is sung: what each is called, its lowest, highest and step, and how a
+// value reads.
+const pct = (v) => `${Math.round(v * 100)}%`;
+const KNOBS = {
+  sway: ["vibrato and drift", 0, 2, 0.05, pct],
+  vibrato: ["vibrato alone", 0, 2, 0.05, pct],
+  loose: ["looseness in time and tune", 0, 2, 0.05, pct],
+  glide: ["slide between notes", 1, 30, 1, (v) => `${v * 10} ms`],
+  dynamics: ["dynamics", 0, 2.5, 0.05, (v) => v.toFixed(2)],
+  breath: ["breaths in the rests", 0, 1, 0.05, pct],
+  breathiness: ["breath in the tone", 0, 1.5, 0.05, pct],
+};
+
+// Knobs for `keys` put in `box`: get() their values, set(values); onchange as one is let go.
+function knobs(box, keys, onchange) {
+  const ins = new Map();
+  for (const k of keys) {
+    const [name, min, max, step, read] = KNOBS[k];
+    const l = document.createElement("label"), s = document.createElement("span"), i = document.createElement("input"), o = document.createElement("output");
+    s.textContent = name;
+    Object.assign(i, { type: "range", min, max, step });
+    i.oninput = () => { o.textContent = read(+i.value); };
+    i.onchange = onchange;
+    l.append(s, i, o);
+    box.append(l);
+    ins.set(k, i);
+  }
+  return {
+    get: () => Object.fromEntries([...ins].map(([k, i]) => [k, +i.value])),
+    set(vs) {
+      for (const [k, i] of ins) {
+        i.value = vs[k];
+        if (!(Math.abs(+i.value - vs[k]) < 1e-9)) throw new Error(`${KNOBS[k][0]}: ${vs[k]} is not on its knob`);
+        i.oninput();
+      }
+    },
+  };
+}
+const singHow = knobs($("sing-how"), ["sway", "vibrato", "glide", "dynamics", "breathiness"]);
+singHow.set({ sway: 1, vibrato: VIBRATO, glide: 9, dynamics: 0, breathiness: 1 });
+const choirHow = knobs($("choir-how"), ["sway", "vibrato", "loose", "glide", "dynamics", "breath", "breathiness"], () => retune());
+
+function showChoir(name) {
+  const c = CHOIRS[name];
+  choirName = name;
+  for (const b of $("choir-examples").children) b.classList.toggle("on", b.textContent === name);
+  $("choir-source").textContent = `${name}. ${c.source}`;
+  $("choir-room").value = c.room;
+  $("choir-motion").value = c.style.motion ?? "";
+  choirHow.set({ sway: 1, vibrato: c.style.vibratoSize ?? VIBRATO, loose: 1, glide: c.style.glide, dynamics: c.style.dynamics, breath: c.style.breath, breathiness: c.style.breathiness });
+  $("choir-parts").replaceChildren(...c.parts.map((p) => {
+    const row = document.createElement("div"); row.className = "part";
+    const who = document.createElement("b"); who.textContent = p.name;
+    const sel = document.createElement("select"); fillVoices(sel); sel.value = p.voice; sel.onchange = retune;
+    const l1 = document.createElement("label"); l1.append("voice ", sel);
+    row.append(who, l1);
+    return row;
+  }));
+  $("choir-songs").replaceChildren(...c.parts.map((p, i) => {
+    const l = document.createElement("label"); l.textContent = p.name;
+    const t = document.createElement("textarea"); t.id = `choir-song-${i}`; t.rows = 8; t.value = p.song; t.onchange = retune;
+    l.append(t);
+    return l;
+  }));
+  if (mode === "choir") warm();
+}
+for (const name of Object.keys(CHOIRS)) $("choir-examples").append(chip(name, () => showChoir(name)));
+
+// the choir as shown: its parts, seats and room (choirs.js arrange()); where it is the choir sung
+// and some of its singers are to be heard alone, the others are muted
+function choirJob() {
+  const rows = [...$("choir-parts").children];
+  const job = arrange(CHOIRS[choirName], {
+    list: voices, route, seed: Math.max(0, Math.floor(+$("seed").value)),
+    voices: rows.map((row) => row.querySelector("select").value),
+    songs: rows.map((_, i) => $(`choir-song-${i}`).value),
+    room: $("choir-room").value, motion: $("choir-motion").value || null, how: choirHow.get(),
+  });
+  if (solo.size && sung === choirName) job.parts.forEach((p, i) => { if (!solo.has(i)) p.mute = true; });
+  return job;
+}
+
+// A tap on the stage or its key: the singers `who` (none: the empty stage), `more` with shift held.
+// They are the ones heard, or, heard alone already, the choir is back; with shift they join those
+// heard, or leave them. The choir is sung so from just ahead of the speaker (retune()). False where
+// the choir on the stage is not the one shown, or cannot be changed.
+function hearAlone(who, more) {
+  if (take?.kind !== "choir" || sung !== choirName || live) return false;
+  const all = who.length > 0 && who.every((i) => solo.has(i));
+  let next = new Set();
+  if (who.length && more) {
+    next = new Set(solo);
+    for (const i of who) { if (all) next.delete(i); else next.add(i); }
+  } else if (who.length && !(all && solo.size === who.length)) {
+    next = new Set(who);
+  }
+  if (next.size === take.settings.parts.length) next = new Set(); // every singer: the choir
+  if (next.size !== solo.size || [...next].some((i) => !solo.has(i))) {
+    solo = next;
+    retune();
+  }
+  keyed();
+  return true;
+}
+// the stage's key: a part whose singers are all among those heard alone is marked
+function keyed() {
+  for (const e of $("k-stage").children) e.classList.toggle("on", solo.size > 0 && e.who?.every((i) => solo.has(i)) === true);
+}
+
+// loads what the choir's workers will need, ahead of the press
+function warm() {
+  if (voices.length) choir.prepare(choirJob().parts);
+}
+
+// What is sung has changed (the room, the pitch, a knob, a voice, the seed, a part's song): the workers load
+// what they will need, and the choir on the tape, if it is this one, is made again: from just ahead
+// of the speaker as it plays, or when next played.
+function retune() {
+  if (!voices.length || !choirName) return;
+  let job;
+  try {
+    job = choirJob();
+  } catch (e) {
+    status(e.message, true);
+    return;
+  }
+  choir.prepare(job.parts);
+  if (take?.kind !== "choir" || cond.cur === null || sung !== choirName || live) return;
+  try {
+    cond.change(job);
+  } catch (e) {
+    stop();
+    status(e.message, true);
+    return;
+  }
+  if (cond.job) status("Singing it the new way from just ahead…");
+  lamp();
+  fileSoon();
+}
+$("choir-motion").onchange = retune;
+$("choir-room").onchange = retune;
+$("seed").onchange = () => { if (mode === "choir") retune(); };
+
+// A making of the take has its parts open: its lanes and the room's trace are on it (conduct.js).
+// What the stage shows of it is worked out once and reads the take as it is made.
+function opened(t) {
+  if (!t.stage) {
+    const job = t.settings, vs = new Map(voices.map((v) => [v.name, v]));
+    const bySex = (p) => hue(p.name, "F") !== hue(p.name, "M");
+    t.stage = {
+      seats: job.seats, panMax: Math.max(...job.seats.map((s) => Math.abs(s.pan)), 1e-3),
+      singers: job.parts.map((p, i) => {
+        const seat = job.seats[p.seat];
+        return {
+          seat: p.seat, hue: hue(p.name, p.sex), name: p.name,
+          on: () => true,
+          level: (f) => { const l = t.lanes[i], v = l.lv[Math.floor((f * 240 - l.off) / 240)]; return v > 0 ? v : 0; },
+          breath: (s) => {
+            const l = t.lanes[i];
+            for (const [at, n] of l.breaths) if (s >= l.off + at && s < l.off + at + n) return (s - l.off - at) / n;
+            return null;
+          },
+          info: () => {
+            const l = t.lanes[i];
+            return [
+              vs.get(p.voice).label,
+              `${l.cents >= 0 ? "+" : ""}${l.cents.toFixed(0)} cents from the written pitch`,
+              `${Math.abs(l.lag * 1000).toFixed(0)} ms ${l.lag < 0 ? "early" : "late"}`,
+              `row ${seat.row + 1}, ${seat.pan < -0.02 ? "left" : seat.pan > 0.02 ? "right" : "middle"}`,
+              `${l.breaths.length} breath${l.breaths.length === 1 ? "" : "s"}`,
+              ...(solo.has(i) ? [solo.size > 1 ? `heard with ${solo.size - 1} other${solo.size > 2 ? "s" : ""}: click again to bring the choir back` : "heard alone: click again to bring the choir back"] : []),
+            ];
+          },
+        };
+      }),
+      alone: () => solo,
+      tap: hearAlone,
+      // the key: a hue a part's name gives, or, where the name says nothing, a hue by voice; with each, its singers
+      key: [...new Map(job.parts.map((p) => [hue(p.name, p.sex), p.name.replace(/ \d+$/, "").replace(/, (high|low)$/, "") + (bySex(p) ? (p.sex === "F" ? ", women" : ", men") : "")])).entries()]
+        .map(([h, n]) => [h, n, job.parts.flatMap((p, i) => (hue(p.name, p.sex) === h ? [i] : []))]),
+    };
+  }
+  if (t === take) setStage(t);
+  wake();
+}
+// the take's stage; one sung another way than the stage shown keeps the singer tapped
+function setStage(t) {
+  if (!t.stage || stage.spec === t.stage) return;
+  const keep = (stage.spec ?? null) !== null && stage.spec.singers.length === t.stage.singers.length;
+  stage.spec = t.stage;
+  stage.set(t.stage, keep);
+  $("k-stage").replaceChildren(...t.stage.key.map(([h, n, who]) => {
+    const s = document.createElement("span"), i = document.createElement("i");
+    i.style.background = hsl(h);
+    s.append(i, n);
+    s.className = "pick";
+    s.title = "Hear this part alone";
+    s.who = who;
+    s.onclick = (e) => { hearAlone(who, e?.shiftKey === true); stage.showCard(); wake(); };
+    return s;
+  }));
+  keyed();
+}
+
+// the choir as shown, from its start: what of it is on the tape as it is to be sung is played again
+function singChoir() {
+  let t;
+  if (sung !== choirName) {
+    solo = new Set();
+    unfile();
+  }
+  try {
+    t = cond.sing(choirJob());
+  } catch (e) {
+    stop();
+    status(e.message, true);
+    return false;
+  }
+  sung = choirName;
+  if (t !== take || showing !== "choir") {
+    take = t;
+    show("choir");
+    stage.spec = null;
+    stage.set(null);
+    timeline.show(t);
+    setStage(t);
+    unnote();
+  } else {
+    timeline.followNow();
+  }
+  status(solo.size ? `Singing, ${solo.size} of ${t.settings.parts.length} singers alone…` : "Singing…");
+  nowPlaying(choirName);
+  fileSoon();
+  return true;
+}
+
+// The crowd (live.js): made once the voices are known.
+function makeCrowd() {
+  crowd = new Crowd({
+    choir, voices, toPlayer,
+    onError: (message) => {
+      toPlayer({ type: "stop", id: live });
+      live = 0;
+      $("pad-start").hidden = false;
+      lamp();
+      status(message, true);
+    },
+  });
+}
+
+function startCrowd() {
+  stop();
+  unfile();
+  speaker();
+  id += 1; live = id;
+  hist = [];
+  crowdAt = null;
+  crowd.start(id);
+  $("pad-start").hidden = true;
+  show("crowd");
+  stage.spec = null;
+  lamp();
+  const R = ["root", "third", "fifth"];
+  stage.set({
+    get seats() { return crowd.seats; },
+    get panMax() { return crowd.P.width; },
+    singers: Array.from({ length: MAX }, (_, j) => ({
+      seat: crowd.seatOf(j), name: crowd.voiceOf(j).label,
+      hue: (s) => ROLE[crowd.singing(j, s)?.role ?? 0],
+      on: (s) => j < crowd.n || crowd.singing(j, s) !== null,
+      level: (f) => crowd.level(j, f),
+      breath: () => null,
+      info: () => {
+        const x = crowd.singing(j, crowdPlayhead()), w = crowd.ways(j);
+        return [
+          x ? `${noteName(x.midi)}, the chord's ${R[x.role]}` : "not singing",
+          `${w.cents >= 0 ? "+" : ""}${w.cents.toFixed(0)} cents off the note`,
+          `${Math.abs(w.time * 1000).toFixed(0)} ms ${w.time < 0 ? "early" : "late"} on each chord`,
+          `vibrato ${w.hz.toFixed(1)} times a second`,
+        ];
+      },
+    })),
+    centre: (s) => { const b = crowd.chordAt(s); return b === null ? "" : chordName(b, crowd.P.pitch); },
+  });
+  $("k-stage").replaceChildren(...["root", "third", "fifth"].map((n, i) => { const s = document.createElement("span"), e = document.createElement("i"); e.style.background = hsl(ROLE[i]); s.append(e, `the chord's ${n}`); return s; }));
+  status("The crowd is singing. Drag on the pad.");
+  nowPlaying("the crowd");
+  wake();
+}
+$("pad-start").onclick = () => { if (crowd) startCrowd(); };
+
+// the crowd's speaker position, in samples of its mix: its last word carried on by the clock
+function crowdPlayhead() {
+  if (!crowdAt || !ctx) return 0;
+  const p = crowdAt.n + ctx.currentTime * SR - crowdAt.frame - (ctx.outputLatency || 0) * SR;
+  return Math.max(0, Math.min(p, crowdAt.n + 2048, crowd.sent));
+}
+
+const pad = new Pad($("pad"), $("pad-x"), $("pad-y"), (changes) => {
+  if (!crowd) return;
+  crowd.set(changes);
+  readout();
+  wake();
+});
+function readout() {
+  if (!crowd) return;
+  const P = crowd.P, x = $("pad-x").value, y = $("pad-y").value;
+  $("pad-read").textContent = `${PARAMS[x].label} ${PARAMS[x].show(P[x])}   ${PARAMS[y].label} ${PARAMS[y].show(P[y])}`;
+}
+$("pad-x").addEventListener("change", () => { readout(); wake(); });
+$("pad-y").addEventListener("change", () => { readout(); wake(); });
+
+// ------------------------------------------------------------------ speech and song
+
+$("go").onclick = () => {
+  if (mode === "crowd") { if (crowd) startCrowd(); return; }
+  stop();
+  speaker();
+  numbers();
+  if (mode === "choir") {
+    singChoir();
+    lamp();
+    return;
+  }
+  unfile();
+  cond.forget();
+  sung = null;
+  id += 1;
+  const common = { id, voice: $("voice").value, seed: Math.max(0, Math.floor(+$("seed").value)) };
+  take = Object.assign(new Take(mode, performance.now()), { job: id, head: 0 });
+  deck.load(take, 0);
+  if (mode === "say") {
+    const text = $("text").value;
+    take.asked = { voice: common.voice, seed: common.seed, text, ssml: $("ssml").checked, rate: +$("rate").value, shift: +$("shift").value };
+    worker.postMessage({ type: "say", id, ...take.asked, step: 20 });
+    nowPlaying(text.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 60));
+  } else {
+    take.text = $("song").value;
+    take.shift = +$("transpose").value;
+    const how = singHow.get();
+    take.asked = {
+      voice: common.voice, seed: common.seed, song: sized(take.text, how.vibrato), shift: take.shift, motion: $("sing-motion").value || null,
+      style: { vibrato: 0.25 * how.sway, motionScale: how.sway, glide: how.glide, dynamics: how.dynamics, breathiness: how.breathiness, diction: $("sing-diction").checked },
+    };
+    worker.postMessage({ type: "sing", id, ...take.asked });
+    nowPlaying((take.text.match(/^#\s*(.+)$/m)?.[1] ?? "a song").slice(0, 60));
+  }
+  show(mode);
+  timeline.show(take);
+  unnote();
+  lamp();
+  status(mode === "say" ? "Speaking…" : "Singing…");
+};
+
+// A song sung over its voice's measured top (voices_ranges.js), said softly: nothing is stopped. Over: a fifth
+// of a second or more of it past half a semitone above the top.
+function overTop(t) {
+  const top = t.kind === "sing" ? RANGES[route][t.asked.voice]?.top : undefined;
+  if (top === undefined) return "";
+  const edge = 440 * 2 ** ((top + 0.5 - 69) / 12);
+  let n = 0, hi = 0;
+  for (const hz of t.f0) if (hz > edge) { n++; if (hz > hi) hi = hz; }
+  if (n < 20) return "";
+  return ` It sings to ${noteName(Math.round(69 + 12 * Math.log2(hi / 440)))}; this voice holds notes to about ${noteName(top)}, and over that it may thin or lose the note.`;
+}
+
+worker.onmessage = ({ data: m }) => {
+  if (m.type === "ready") {
+    voices = m.voices;
+    vox = m.vox;
+    route = m.route;
+    chain.vox = vox;
+    // a site with more than one sound lets the listener choose; the choice is in the address, and the page starts again with it
+    if (m.routes.length > 1) {
+      const names = { hifi: "hifi: the fullest sound", fast: "fast: the earlier engine, about twice as quick" };
+      $("route").replaceChildren(...m.routes.map((r) => { const o = document.createElement("option"); o.value = r; o.textContent = names[r]; return o; }));
+      $("route").value = route;
+      $("route").onchange = () => { const u = new URL(location.href); u.searchParams.set("route", $("route").value); location.href = u.href; };
+      $("route-label").hidden = false;
+    }
+    if (m.notes) {
+      notes = new Notes();
+      $("notes").hidden = false;
+      notes.load().then(listNotes).catch((e) => status(`The notes could not be read: ${e.message}`, true));
+    }
+    if (vox) $("about-sound").textContent = "the voice's loudness is drawn for each moment, then a code for the sound, 100 frames a second, and a generator turns the code into sound on the score's pitch; all three learned from LibriTTS-R. Singing goes the same way, on the notes' pitch.";
+    fillVoices($("voice"));
+    $("voice").disabled = false; $("go").disabled = false; $("pad-start").disabled = false;
+    // a source of the models that failed where its mirror gave the file is said, not passed over
+    status(`Ready (loaded in ${(m.ms / 1000).toFixed(1)} s). The first use of a voice fetches it.` + (m.warned.length ? ` A source of the models failed and its mirror was used: ${m.warned[0]}` : ""), m.warned.length > 0);
+    showChoir(Object.keys(CHOIRS)[0]);
+    try {
+      makeCrowd();
+    } catch (e) {
+      status(`The crowd cannot sing: ${e.message}`, true);
+      $("pad-start").disabled = true;
+      return;
+    }
+    readout();
+    if (mode === "crowd") crowd.prepare();
+    wake();
+    return;
+  }
+  if (m.type.startsWith("choir-") || m.type.startsWith("note-") || crowd?.owns(m)) { choir.message(0, m); return; }
+  if (m.type === "error" && m.id === null) { status(m.message, true); return; } // loading
+  if (!take || m.id !== (take.job ?? null)) return; // not this take's making, or it was stopped
+  if (m.type === "error") { stop(); unfile(); status(m.message, true); return; }
+  const now = performance.now();
+  if (m.type === "plan") {
+    take.plan(m.plan, m.at);
+  } else if (m.type === "sung") {
+    take.song(take.text, take.shift, m.frames);
+  } else if (m.type === "chunk") {
+    take.push(m.samples);
+    take.head = take.n;
+    take.first ??= now - take.t0;
+    take.pitch(take.kind === "say" ? m.part : -1, m.from, m.pitch);
+    take.busy = m.busy;
+    deck.pump();
+    wake();
+  } else if (m.type === "done") {
+    take.job = null;
+    take.head = null;
+    take.close();
+    deck.pump();
+    lamp();
+    status(`${m.secs.toFixed(1)} s of audio: first sound ${Math.round(take.first)} ms after the press, made in ${(m.ms / 1000).toFixed(2)} s (${(m.secs * 1000 / m.ms).toFixed(1)}× real time).` + overTop(take));
+    numbers([
+      [`${Math.round(take.first)} ms`, "from the press to the first sound made"],
+      [`${(m.secs * 1000 / m.ms).toFixed(1)}×`, `as fast as it plays: ${m.secs.toFixed(1)} s made in ${(m.ms / 1000).toFixed(2)} s`],
+      [`${(m.secs / (m.busy / 1000)).toFixed(1)}×`, `a second of compute, on one worker: ${(m.busy / 1000).toFixed(2)} s of work`],
+    ]);
+    fileSoon();
+  }
+};
+
+// ------------------------------------------------------------------ the figures
+
+const timeline = new Timeline($("time"));
+timeline.onFollow = (on) => { $("follow").hidden = on; };
+// a click on the take: the speaker is set down there, and a choir made from there if it is not
+timeline.onSeek = (s) => {
+  if (!take || live) return;
+  speaker();
+  try {
+    if (take.kind === "choir") cond.seek(s);
+    else deck.jump(s);
+  } catch (e) {
+    stop();
+    status(e.message, true);
+    return;
+  }
+  if (take.kind === "choir") nowPlaying(sung);
+  lamp();
+};
+$("follow").onclick = () => timeline.followNow();
+
+// ------------------------------------------------------------------ the listener's notes
+
+// What a take's notes are filed under (the choir, or what was said or sung), and how it was made.
+const pieceOf = (t) => (t.kind === "choir" ? `choir:${sung}` : `${t.kind}:${digest(t.asked.text ?? t.asked.song)}`);
+const recipeOf = (t) => (t.kind === "choir" ? { vox, choir: sung, ...t.settings } : { vox, ...t.asked });
+
+// the take's notes under the time line and flagged on it; one made another way says so
+function listNotes() {
+  if (!notes) return;
+  const list = take ? notes.of(pieceOf(take)) : [], key = take ? digest(JSON.stringify(recipeOf(take))) : null;
+  timeline.pins = list.map((n, i) => ({ s: Math.round(n.at * SR), n: i + 1 }));
+  $("note-list").replaceChildren(...list.map((n, i) => {
+    const li = document.createElement("li"), k = document.createElement("i"), at = document.createElement("button"), text = document.createElement("span"), gone = document.createElement("button");
+    k.textContent = i + 1;
+    at.className = "at"; at.type = "button"; at.textContent = stamp(n.at); at.title = "Play from two seconds before";
+    at.onclick = () => timeline.onSeek(Math.max(0, Math.round((n.at - 2) * SR)));
+    text.textContent = n.text;
+    if (n.key !== key) { const o = document.createElement("small"); o.textContent = " (made another way than now)"; text.append(o); }
+    gone.className = "gone"; gone.type = "button"; gone.textContent = "×"; gone.title = "Take this note back";
+    gone.onclick = () => notes.remove(n.id).then(listNotes).catch((e) => status(`The note is still there: ${e.message}`, true));
+    li.append(k, at, text, gone);
+    return li;
+  }));
+  wake();
+}
+
+// a note to be written for sample s of the take
+function note(s) {
+  if (!notes || !take || showing === "crowd") return;
+  noting = timeline.mark = s;
+  $("note-at").textContent = stamp(s / SR);
+  $("note-form").hidden = false;
+  $("note-text").focus();
+  wake();
+}
+// no note is being written; the list is the take's
+function unnote() {
+  noting = timeline.mark = null;
+  $("note-form").hidden = true;
+  $("note-text").value = "";
+  listNotes();
+}
+$("note-add").onclick = () => { if (take) note(Math.floor(deck.take === take ? deck.ph() : 0)); };
+$("note-cancel").onclick = unnote;
+$("note-form").onsubmit = (e) => {
+  e.preventDefault();
+  const text = $("note-text").value.trim();
+  if (!text || noting === null || !take) return;
+  notes.add({ piece: pieceOf(take), kind: take.kind, text, recipe: recipeOf(take) }, take, noting)
+    .then(unnote)
+    .catch((e) => status(`The note was not saved: ${e.message}`, true));
+};
+timeline.onMark = note;
+
+// The keys. Space plays and pauses, the arrows move the mark (or, with no note being written, the
+// speaker: playing it plays on from there, taken up it stays up), Enter plays from two seconds
+// before the mark, N marks. In the note's box, where those keys write, shift-space, alt-arrows and
+// shift-Enter do the same. A slider keeps its arrows and a box to tick its space bar.
+// the speaker is taken up where it is, or set down where it was (at the start, from the end)
+function playPause() {
+  if (!take || live || showing === "crowd") return;
+  if (deck.take === take && deck.active) {
+    deck.stop();
+    cond.rein();
+    lamp();
+    status(`Paused at ${stamp(deck.pos / SR)}.`);
+  } else {
+    const end = take.length ?? null, at = deck.take === take ? deck.pos : 0;
+    timeline.onSeek(end !== null && at >= end - SR / 10 ? 0 : at);
+  }
+}
+// the speaker by so many seconds from where it is; taken up, it stays up and only its place moves
+function skip(secs) {
+  if (!take || live || showing === "crowd" || deck.take !== take) return;
+  const to = Math.max(0, Math.min(Math.round((deck.active ? deck.ph() : deck.pos) + secs * SR), (take.length ?? Infinity) - 1));
+  if (deck.active) {
+    timeline.onSeek(to);
+  } else {
+    deck.pos = to;
+    cond.rein();
+    status(`Paused at ${stamp(to / SR)}.`);
+    wake();
+  }
+}
+// the note being written is of a place so many seconds on
+function nudge(secs) {
+  if (noting === null || !take) return;
+  noting = timeline.mark = Math.max(0, Math.min(Math.round(noting + secs * SR), (take.length ?? Infinity) - 1));
+  $("note-at").textContent = stamp(noting / SR);
+  wake();
+}
+const replay = () => { if (noting !== null && take && !live) timeline.onSeek(Math.max(0, noting - 2 * SR)); };
+// whether the key is the thing in focus's own: any key where text is written or a list is open to
+// choose from, the arrows on a slider, the space bar on a box to tick
+const TEXTS = ["", "text", "search", "number", "email", "url", "password", "tel"];
+function own(e) {
+  const t = e.target, tag = t?.tagName ?? "", type = (t?.type ?? "").toLowerCase();
+  if (tag === "TEXTAREA" || tag === "SELECT" || t?.isContentEditable === true) return true;
+  if (tag !== "INPUT") return false;
+  if (TEXTS.includes(type)) return true;
+  if (type === "range") return e.key !== " " && e.key !== "n" && e.key !== "Enter";
+  if (type === "checkbox" || type === "radio") return e.key === " ";
+  return false;
+}
+document.addEventListener("keydown", (e) => {
+  if (e.metaKey || e.ctrlKey) return;
+  const inNote = e.target === $("note-text"), arrow = e.key === "ArrowLeft" ? -1 : e.key === "ArrowRight" ? 1 : 0;
+  let did = true;
+  if (inNote) {
+    if (e.key === " " && e.shiftKey && !e.altKey) playPause();
+    else if (e.key === "Enter" && e.shiftKey && !e.altKey) replay();
+    else if (arrow && e.altKey) nudge(arrow * (e.shiftKey ? 1 : 0.1));
+    else did = false;
+  } else if (own(e) || e.altKey) {
+    did = false;
+  } else if (e.key === " ") {
+    playPause();
+  } else if (arrow) {
+    if (noting !== null) nudge(arrow * (e.shiftKey ? 1 : 0.1));
+    else skip(arrow * (e.shiftKey ? 10 : 2));
+  } else if (e.key === "Enter" && noting !== null && e.target?.tagName !== "BUTTON") {
+    replay();
+  } else if (e.key === "n" && !e.shiftKey) {
+    $("note-add").onclick();
+  } else {
+    did = false;
+  }
+  if (did) e.preventDefault();
+});
+// a button in focus would be pressed by the space bar's release
+document.addEventListener("keyup", (e) => {
+  if (e.key === " " && !e.metaKey && !e.ctrlKey && !e.altKey && !own(e)) e.preventDefault();
+});
+$("zoom").onclick = () => {
+  timeline.span = timeline.span === null ? 8 : null;
+  $("zoom").textContent = timeline.span === null ? "8 seconds" : "Whole take";
+  if (timeline.span !== null) timeline.followNow();
+  wake();
+};
+const stage = new Stage($("stage"), $("stage-card"));
+const chain = new Chain($("chain"));
+const pace = new Pace($("pace"));
+
+// the figures for what plays: kind "say", "sing", "choir" or "crowd"
+function show(kind) {
+  showing = kind;
+  $("viz").hidden = false;
+  $("f-stage").hidden = kind === "say" || kind === "sing";
+  $("f-time").hidden = kind === "crowd";
+  $("c-stage").textContent = kind === "crowd"
+    ? "The crowd from above, the listener at the bottom: each voice at its seat, lit as loud as it sings, coloured by the chord tone it has. Tap one to see how it sings."
+    : "The choir from above, the listener at the bottom: each singer at their seat, lit as loud as they sing, a ring as they breathe; behind them the hall glows as it rings. Click a singer to hear them alone and see how they sing and the three ways their sound reaches you; shift-click adds or takes away another, and a name in the key below is all of that part. Click them again, or the empty stage, to bring the choir back.";
+  if (kind !== "crowd") $("c-time").textContent = CAPTION[kind];
+  $("c-chain").textContent = CHAIN[kind];
+  $("c-pace").textContent = kind === "crowd" ? PACE.crowd : PACE.take;
+  $("k-stage").replaceChildren();
+  chain.set(kind);
+  wake();
+}
+
+let raf = 0, quiet = 0, texts = 0;
+function wake() { if (!raf) raf = requestAnimationFrame(frame); }
+function frame(ms) {
+  raf = 0;
+  draw(ms);
+  if (active() || pad.down) quiet = ms;
+  if (ms - quiet < 1500 || (showing !== "crowd" && timeline.busy)) wake();
+}
+addEventListener("resize", wake);
+
+function draw(ms) {
+  const now = performance.now(), words = ms - texts > 120;
+  if (words) texts = ms;
+  if (!$("crowd").hidden) pad.draw(crowd?.P ?? null, live ? crowd.stats().capacity : null);
+  if (showing === "crowd" && crowd?.room) {
+    const ph = crowdPlayhead(), f = Math.floor(ph / 240), tr = crowd.room.trace;
+    const hall = tr.at("hall", f) + tr.at("mhall", f);
+    stage.draw(ph, hall > 0 ? hall : null);
+    pace.crowd(hist, now);
+    if (words) {
+      const s = crowd.stats();
+      chain.update({ ph, trace: tr, live: { parts: `${s.voices} voice${s.voices === 1 ? "" : "s"} on ${s.workers} workers`, heard: `heard ${clock(s.heard)}` } });
+      if (live) {
+        numbers([
+          [`${s.voices}`, "voices singing now"],
+          [s.capacity === null ? "…" : `${Math.round(s.capacity)}`, `voices this device keeps up with, measured as it sings on ${s.workers} workers`],
+          [s.load === null ? "…" : `${Math.round(100 * Math.min(1, s.load))}%`, "of the workers' time spent singing"],
+          [`${s.ahead.toFixed(2)} s`, "of sound made ahead of the speaker"],
+          [`${s.stalls}`, s.stalls === 1 ? "time the speaker ran dry" : "times the speaker ran dry"],
+        ]);
+      }
+    }
+  } else if (take && showing === take.kind) {
+    const ph = deck.take === take ? deck.ph() : 0, on = deck.take === take && (deck.active || deck.pos > 0);
+    timeline.draw(ph, on, 6);
+    if (take.kind === "choir") {
+      const f = Math.floor(ph / 240), tr = take.trace;
+      const hall = tr ? tr.at("hall", f) + tr.at("mhall", f) : NaN;
+      stage.draw(ph, hall > 0 ? hall : null);
+    }
+    if (deck.take === take) pace.take(deck.run, (take.length ?? take.n) - deck.run.base, now - deck.run.t0);
+    if (words) {
+      const secs = take.n / SR, speed = take.busy > 0 ? `${(secs / (take.busy / 1000)).toFixed(0)}× real time` : "";
+      const parts = take.lanes ? `${take.lanes.length} singers on ${take.workers} workers` : "";
+      chain.update({ take, ph, trace: take.trace ?? null, live: { speed, parts, noteName, heard: on ? `heard ${clock(ph / SR)}` : "" } });
+    }
+  }
+  scope.draw();
+}
+
+tab("say");
+</script>
+</body>
+</html>

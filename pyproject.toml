@@ -1,0 +1,46 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Giles Hall
+
+[build-system]
+requires = ["tomli; python_version < '3.11'"]
+build-backend = "_build"
+backend-path = ["python"]
+
+[project]
+name = "lipservice"
+version = "0.1.0"
+description = "Talk is cheap. Singing is free. Sixteen voices that sing and speak on your own CPU"
+readme = "python/README.md"
+requires-python = ">=3.9"
+license = "AGPL-3.0-only"
+license-files = ["LICENSE", "NOTICE"]
+keywords = ["text-to-speech", "tts", "singing", "speech synthesis", "voice"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Operating System :: MacOS",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Rust",
+  "Topic :: Multimedia :: Sound/Audio :: Speech",
+  "Topic :: Multimedia :: Sound/Audio :: Sound Synthesis",
+]
+
+[project.urls]
+Homepage = "https://lipservice.dev"
+
+[project.scripts]
+lipservice = "lipservice.cli:main"
+
+# the Linux wheels: tools/release/wheels.sh runs this. One wheel a platform serves every Python 3,
+# so it is built once and tested on the oldest and the newest.
+[tool.cibuildwheel]
+build = "cp39-* cp313-*"
+build-frontend = "build"
+
+[tool.cibuildwheel.linux]
+archs = ["x86_64", "aarch64"]
+manylinux-x86_64-image = "manylinux2014"
+manylinux-aarch64-image = "manylinux2014"
+before-all = "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal"
+environment = { PATH = "$HOME/.cargo/bin:$PATH" }

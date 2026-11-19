@@ -1,0 +1,267 @@
+# text	words and stops, or !error. Run by engine/tests/front.rs.
+Hello, world.	hello , world .
+1,234	one thousand two hundred thirty four
+1234	twelve thirty four
+3456	three thousand four hundred fifty six
+1999 2026 1905 1900 2005	nineteen ninety nine twenty twenty six nineteen oh five nineteen hundred two thousand five
+2,026 1066 007 0	two thousand twenty six one thousand sixty six zero zero seven zero
+-5 3.14 40% 3.5%	minus five three point one four forty percent three point five percent
+$5 $1 $1.50 $0.99 $0.01 $1,000	five dollars one dollar one dollar fifty cents ninety nine cents one cent one thousand dollars
+1st 22nd 103rd 4th 11th 12th 20th 1,000th	first twenty second one hundred third fourth eleventh twelfth twentieth one thousandth
+4:30 4:05 4:00 12:45	four thirty four oh five four o'clock twelve forty five
+At 4:30 pm, we left.	at four thirty _P_M , we left .
+At 4:30 p.m. we left.	at four thirty _P_M we left .
+Is it 9 a.m.?	is it nine _A_M ?
+In 1999, he paid $5.	in nineteen ninety nine , he paid five dollars .
+1990-1995	nineteen ninety to nineteen ninety five
+COVID-19 in 2026	COVID nineteen in twenty twenty six
+No. 5 and no. 6	number five and no . six
+Mr. and Mrs. Smith met Dr. Jones.	mister and missus smith met doctor jones .
+Messrs. Hall and Ms. Lee	messieurs hall and ms lee
+St. Louis is on Elm St. near here	saint louis is on elm street near here
+He lived on Elm St.	he lived on elm street .
+I live on Fifth Ave. now.	i live on fifth avenue now .
+He lived on Fifth Ave. Then he left.	he lived on fifth avenue . then he left .
+Take Hwy. 9 to Main Rd.	take highway nine to main road .
+Mt. Hood and Ft. Worth	mount hood and fort worth
+Sen. Lee met Pres. Adams.	senator lee met president adams .
+On Jan. 5 I met Jan.	on january fifth i met jan .
+John Smith Jr. said so	john smith junior said so
+John Smith, Jr. Then he left.	john smith , junior . then he left .
+apples, pears, etc.	apples , pears , et cetera .
+John F. Kennedy	john _F kennedy
+the U.S. and the U.S.S.R., i.e. two	the _U_S and the _U_S_S_R , that is two
+the FBI and NASA and the US	the FBI and NASA and the US
+the FBI's files	the FBI's files
+Wait... what?!	wait . what ?
+Yes -- no	yes , no
+Yes — no – maybe	yes , no , maybe
+"Quoted" (bracketed) [square]	quoted bracketed square
+It’s Giles’s turn.	it's giles's turn .
+three hours’ rise	three hours' rise
+state-of-the-art	state of the art
+Café naïve façade über señor	cafe naive facade uber senor
+Straße æther	strasse aether
+, leading comma	leading comma
+word,word	word , word
+A man and I	a man and i
+x y	x y
+mp3	_M_P three
+2st	!error
+a & b	a and b
+1234567890123	!error
+a/b	a or b
+中	!error
+snake_case	snake case
+the 1990s and '60s, the 1900s and 6s	the nineteen nineties and sixties , the nineteen hundreds and sixes
+the 2000s and 1980's	the two thousands and nineteen eighties
+Call me at 555-123-4567 or (617) 555-0199.	call me at five five five , one two three , four five six seven or six one seven , five five five , zero one nine nine .
+1-800-555-1234 and 555.123.4567	one eight hundred , five five five , one two three four and five five five , one two three , four five six seven
+pages 100-1000, between 200-300 people	pages one hundred to one thousand , between two hundred and three hundred people
+jane.doe@example.com and www.example.org/about.	jane dot doe at example dot com and _W_W_W dot example dot org slash about .
+https://www.example.com/path?q=1&x=2	_W_W_W dot example dot com slash path question mark _Q equals one and _X equals two
+Email someone@cs.stanford.edu or visit github.io.	email someone at _C_S dot stanford dot _E_D_U or visit github dot _I_O .
+It's 72°F outside, about 22 °C, -5°C and 72° F.	it's seventy two degrees fahrenheit outside , about twenty two degrees celsius , minus five degrees celsius and seventy two degrees fahrenheit .
+The meeting is at 10:30am on Mon., Jan. 6th.	the meeting is at ten thirty _A_M on monday , january sixth .
+It's 9am-5pm daily, 10 a.m. and 3 p.m. and 9 AM.	it's nine _A_M to five _P_M daily , ten _A_M and three _P_M and nine _A_M .
+We ran 5 km in 25 min.	we ran five kilometers in twenty five minutes .
+He is 6 ft 2 in and weighs 180 lbs; 1 in 5 people.	he is six feet two inches and weighs one hundred eighty pounds ; one in five people .
+1 km and 1 hr and 1 lb, 3.5 mi and 5 mi.	one kilometer and one hour and one pound , three point five miles and five miles .
+Add 2 + 2 = 4, then multiply by 3 x 5 and 2 * 3 and 2x.	add two plus two equals four , then multiply by three times five and two times three and two times .
+2+2=4	two plus two equals four
+Henry VIII had six wives; World War II ended in 1945.	henry the eighth had six wives ; world war two ended in nineteen forty five .
+King Charles I and Henry I and Queen Elizabeth II.	king charles the first and henry i and queen elizabeth the second .
+Pope John Paul II and Louis XIV.	pope john paul the second and louis the fourteenth .
+Rocky III and Super Bowl LVII and Part I and Act V.	rocky three and super bowl fifty seven and part one and act five .
+Is it XL? Mark I think so.	is it XL ? mark i think so .
+The score was 3-2 and 4-6 hours.	the score was three to two and four to six hours .
+From $10-$20 a day, up 10-20%, 1990-95, Jan. 5-10.	from ten dollars to twenty dollars a day , up ten to twenty percent , nineteen ninety to ninety five , january fifth to tenth .
+Version 2.0.1 was released on 2024-03-15; the v2.0.1 release.	version two point oh point one was released on march fifteenth , twenty twenty four ; the _V two point oh point one release .
+192.168.1.1 and 1.2.3 and 10.0	one hundred ninety two dot one hundred sixty eight dot one dot one and one point two point three and ten point zero
+Prices rose 3.5% in Q3 2023.	prices rose three point five percent in _Q three twenty twenty three .
+I paid €20 and £15, about ¥3000.	i paid twenty euros and fifteen pounds , about three thousand yen .
+€1.50 and £0.50 and 50¢ and $1.	one euro fifty cents and fifty pence and fifty cents and one dollar .
+It costs $1.2 million, or $1.2M, $5 billion.	it costs one point two million dollars , or one point two million dollars , five billion dollars .
+That's 1/2 of the pie, and 3/4 of the cake.	that's one half of the pie , and three quarters of the cake .
+2 1/2 cups, 1/3 and 2/3 and 5/8 and 1/16.	two and a half cups , one third and two thirds and five eighths and one sixteenth .
+½ cup and 2½ cups	one half cup and two and a half cups
+Use #hashtags and @mentions.	use hashtag hashtags and at mentions .
+#1 fan and ~5 min and +5 points	number one fan and about five minutes and plus five points
+I code in C++ and C#.	i code in _C plus plus and _C sharp .
+AT&T and Q&A and A/B tests and his/her and/or	AT and _T and _Q and _A and _A_B tests and his or her and or
+GPT-4 and Wi-Fi	GPT four and wi fi
+Meet me at 221B Baker St., London.	meet me at two twenty one _B baker street , london .
+The U.N. and the E.U. met in N.Y.C.	the _U_N and the _E_U met in _N_Y_C .
+on Baker St. Then	on baker street . then
+Smith Jr. and Co. Inc.	smith junior and company incorporated .
+Mix 1 cup of flour with 2 tbsp of sugar.	mix one cup of flour with two tablespoons of sugar .
+The file is 4.7 GB, or 4,700 MB.	the file is four point seven gigabytes , or four thousand seven hundred megabytes .
+2.5GHz CPU with 16GB RAM	two point five gigahertz CPU with sixteen gigabytes RAM
+1920x1080 at 60fps	nineteen twenty by ten eighty at sixty frames per second
+a 4K TV and 5G and 1080p	a four _K TV and five _G and ten eighty _P
+5W bulb at 12V	five watts bulb at twelve volts
+Rock 'n' roll never dies.	rock 'n roll never dies .
+Call 911 now!	call nine one one now !
+Flight B12 at gate 3D.	flight _B twelve at gate three _D .
+I'll see you on 12/25.	i'll see you on twelve twenty five .
+50/50 and 24/7 and 9/11	fifty fifty and twenty four seven and nine eleven
+12/25/2024 and 1/2/24 and 25/12/2024	december twenty fifth , twenty twenty four and january second , twenty four and december twenty fifth , twenty twenty four
+I was born 4/7/1990.	i was born april seventh , nineteen ninety .
+The ratio is 16:9 at 3:30.	the ratio is sixteen to nine at three thirty .
+In 1066 AD and 1099 BC.	in ten sixty six AD and ten ninety nine BC .
+from 1050 until 1066	from ten fifty until ten sixty six
+Today is Wednesday, February 14, 2024.	today is wednesday , february fourteenth , twenty twenty four .
+St. Patrick's Day is March 17.	saint patrick's day is march seventeenth .
+Open from 9-5, Mon-Fri, June-August.	open from nine to five , monday to friday , june to august .
+Sat., Jan. 4 and Sun.	saturday , january fourth and sun .
+Wed. was rainy.	wed . was rainy .
+A vs. B, approx. 30 min.	_A versus b , approximately thirty minutes .
+Fig. 3 and Vol. 2 and pp. 5	figure three and volume two and pages five
+e.g. apples, i.e. fruit.	for example apples , that is fruit .
+w/ milk, w/o sugar, n/a	with milk , without sugar , _N_A
+The 3D printer and **bold** text	the three _D printer and bold text
+Mar-a-Lago and sun-dried tomatoes	mar a lago and sun dried tomatoes
+Covers © 2024 § 5	covers copyright twenty twenty four section five
+10:30:15	ten thirty fifteen
+$ 5	!error
+2024-13-45	twenty twenty four thirteen forty five
+A vs. B and plan A, A and B, a cat	_A versus b and plan _A , _A and b , a cat
+Covers 1/3 cup at 3:30 pm.	covers one third cup at three thirty _P_M .
+By a Household Book I mean a book.	by a household book i mean a book .
+new King. Then I can ask	new king . then i can ask
+the war I fought and World War I ended and Act I of it	the war i fought and world war one ended and act one of it
+Malcolm X and Henry V and Charles X.	malcolm x and henry the fifth and charles the tenth .
+between A and B, Room "A," at the end	between _A and b , room _A , at the end
+Return to Washington, D.C.	return to washington , _D_C .
+OpenAI and ChatGPT run on macOS and iOS.	open AI and chat GPT run on mac OS and _I OS .
+SpaceX, xAI, DeepMind, APIs and CEOs.	space _X , _X AI , deep mind , API's and CEO's .
+A PhD from McDonald, DiCaprio, MacBook and McNEILL.	a _P_H _D from mcdonald , dicaprio , macbook and mcneill .
+OpenAI's iPhone, eBay, PhDs and NASA's IDs.	open AI's _I phone , _E bay , _P_H D's and NASA's ID's .
+XMLHttpRequest, getElementById, AbilenA.	XML _H_T_T_P request , get element by id , abilena .
+Yes -- no, 5 - 3 = 2, between 5 - 10 years, Paris - the city.	yes , no , five minus three equals two , between five and ten years , paris , the city .
+Rated 4/5 stars, I got 8/10 and 87/100, 4.5/5, 45/60 and 120/80.	rated four out of five stars , i got eight out of ten and eighty seven out of one hundred , four point five out of five , forty five out of sixty and one hundred twenty over eighty .
+On 3/4 we met; 3/4 of a cup, 1/100 of a second, 60/40.	on three four we met ; three quarters of a cup , one hundredth of a second , sixty forty .
+It costs $5/month, 5mg/kg, 10/day and 9.8 m/s².	it costs five dollars per month , five milligrams per kilogram , ten per day and nine point eight meters per second squared .
+Run 1h30m, then 5m30s, 2 h 15 m and a 5 km run.	run one hour thirty minutes , then five minutes thirty seconds , two hours fifteen minutes and a five kilometer run .
+He is 5'11" tall with a 12" pizza.	he is five feet eleven inches tall with a twelve inch pizza .
+Call +44 20 7946 0958 or +1 555 123 4567.	call plus four four , two zero , seven nine four six , zero nine five eight or plus one , five five five , one two three , four five six seven .
+Jan 5, 2024 and 5 January 2024 and Mon 5 Jan.	january fifth , twenty twenty four and the fifth of january twenty twenty four and monday the fifth of january .
+Sun, 5 Jan and Fri 3pm, Sat 10:30, but Sun may rise.	sunday , the fifth of january and friday three _P_M , saturday ten thirty , but sun may rise .
+See p. 42, c. 1500, Ch. 3 and a Ph.D. in it.	see page forty two , circa fifteen hundred , chapter three and a _P_H_D in it .
+Open notes.txt, data.json, IMG_0042.JPG, report-2024.pdf and song.mp3 in Node.js.	open notes dot _T_X_T , data dot jason , IMG zero zero four two dot jay peg , report twenty twenty four dot _P_D_F and song dot _M_P three in node dot _J_S .
+x > 5, a >= b, a != b, Boston -> NYC, >5 years.	x greater than five , a greater than or equal to b , a not equal to b , boston to NYC , more than five years .
+10^6, 10⁶, 10⁻⁶, x² and 5 m² at km/h.	ten to the sixth , ten to the sixth , ten to the minus sixth , _X squared and five square meters at kilometers per hour .
+5 µg, 10 kΩ, α and β, ≈ 3, ÷ 2, ₹500 and ₿0.5.	five micrograms , ten kilo ohms , alpha and beta , approximately three , divided by two , five hundred rupees and zero point five bitcoin .
+Hello :) world, Wikipedia says[1] so[citation needed].	hello world , wikipedia says so .
+Intro\n# Heading\n- item one\n* item two\n> quoted\n`code` here | there	intro . heading . item one , item two , quoted , code here , there
+50 * 3 and a * b, press # now, snake_case.	fifty times three and a , b , press number now , snake case .
+I need:\n- eggs\n- milk.\n\nDone	i need : eggs , milk . done
+I am SO tired. DO NOT GO, OK? I'M HOME.	i am so tired . do NOT go , ok ? i'm HOME .
+I LOVE IT, and the IT team. I AM here; AM radio.	i LOVE it , and the IT team . i am here ; AM radio .
+LED lights, LEDs and ROI, FYI.	_L_E_D lights , LED's and _R_O_I , _F_Y_I .
+Portland, OR 97201. Cambridge, MA 02139-4307. Washington, DC 20001.	portland , oregon nine seven two zero one . cambridge , massachusetts zero two one three nine , four three zero seven . washington , _D_C two zero zero zero one .
+Call OR text, Portland, OR.	call or text , portland , oregon .
+Thx! Pls fwd the msg. Omg, idk, tbh. Re: Fwd: hi	thanks ! please forward the message . _O_M_G , _I_D_K , _T_B_H . re : forward : hi
+Revenue grew 12% YoY, 3% QoQ and 1% MoM.	revenue grew twelve percent year over year , three percent quarter over quarter and one percent month over month .
+Ph: 555-1234. Tel: 555-1235.	phone : five five five , one two three four . telephone : five five five , one two three five .
+Ship via UPS. RIP. AKA Bob, aka Rob. UPS AND DOWNS. The WHO said WHO cares.	ship via _U_P_S . _R_I_P . _A_K_A bob , _A_K_A rob . UPS AND DOWNS . the _W_H_O said WHO cares .
+Our SaaS runs on PostgreSQL.	our sass runs on postgres _Q_L .
+Run rm -rf build, ls -la, or tar -xvf a.tar.gz; she knew better -knew it.	run rm dash _R_F build , ls dash _L_A , or tar dash _X_V_F a dot tar dot _G_Z ; she knew better knew it .
+Pour 5 fl oz, or 1 fl. oz. of milk.	pour five fluid ounces , or one fluid ounce of milk .
+2.3M views, 45K likes, 1.5k followers, 10M users, 3M tape, a 7B model, 1.5B params and 3bn.	two point three million views , forty five _K likes , one point five thousand followers , ten million users , three _M tape , a seven _B model , one point five billion params and three billion .
+BP 128/82 mmHg, pulse 72 bpm.	BP one hundred twenty eight over eighty two millimeters of mercury , pulse seventy two beats per minute .
+Your code is 482915. PIN 0042, zip code 97201, error 404.	your code is four eight two nine one five . PIN zero zero four two , zip code nine seven two zero one , error four hundred four .
+Order 112-4839201-5573120, SSN 123-45-6789, tracking 1Z999AA10123456784.	order one one two , four eight three nine two zero one , five five seven three one two zero , SSN one two three , four five , six seven eight nine , tracking one _Z nine nine nine _A _A one zero one two three four five six seven eight four .
+Open localhost:3000, 127.0.0.1:8080 or example.com:8443/x.	open localhost colon three thousand , one hundred twenty seven dot zero dot zero dot one colon eighty eighty or example dot com colon eighty four forty three slash _X .
+See docs/api.md, /usr/local/bin, ~/code and ./run.sh; edit .env and .gitignore.	see docs slash api dot _M_D , slash usr slash local slash bin , tilde slash code and dot slash run dot _S_H ; edit dot env and dot gitignore .
+Open Mon-Fri 9am-5pm, Sat 10am-2pm. Airs at 9/8c.	open monday to friday nine _A_M to five _P_M , saturday ten _A_M to two _P_M . airs at nine slash eight _C .
+I love Polish food. Polish the silver.	i love Polish food . Polish the silver .
+Nice work in Nice, France.	Nice work in Nice , france .
+POLISH nice polish	POLISH nice polish
+Dr. Patel lives on Elm Dr. near Mt. Rainier.	doctor patel lives on elm drive near mount rainier .
+She lives at 12 Oak Dr.	she lives at twelve oak drive .
+Visit Dr. Smith on Elm Dr., Springfield.	visit doctor smith on elm drive , springfield .
+The conference runs Jan 5-7, 2025, in Las Vegas.	the conference runs january fifth to seventh , twenty twenty five , in las vegas .
+Use the hashtag #ThrowbackThursday.	use the hashtag throwback thursday .
+The 49ers beat the 76ers.	the forty niners beat the seventy sixers .
+I love M&Ms and M&M's.	i love _M and M's and _M and M's .
+Q&A and AT&T.	_Q and _A and AT and _T .
+Turn left on Main St. and right on Elm Dr. The house is blue.	turn left on main street and right on elm drive . the house is blue .
+I live on Elm Dr. It is quiet.	i live on elm drive . it is quiet .
+VMware and PCIe, VMware's and PostgreSQL's.	_V_M ware and _P_C_I_E , _V_M ware's and postgres QL's .
+Order #A12345 and #B7 and #42 and #tag and #1.	order number _A one two three four five and number _B seven and number forty two and hashtag tag and number one .
+Your order #a12 here, #covid19 and the hashtag #MeToo2.	your order number _A twelve here , hashtag covid nineteen and the hashtag me too two .
+Add 1/4 tsp. salt and 2 Tbsp. butter.	add one quarter teaspoon salt and two tablespoons butter .
+Roe v. Wade was decided in 1973.	roe versus wade was decided in nineteen seventy three .
+The car gets 35 mpg on the highway.	the car gets thirty five miles per gallon on the highway .
+Run npm install && npm start.	run npm install and npm start .
+Set the timeout to 30s. Wait 5s. In the 30s. In his 40s. Every 45s. From the 20s to 30s. The 80s were fun. 80s music.	set the timeout to thirty seconds . wait five seconds . in the thirties . in his forties . every forty five seconds . from the twenties to thirties . the eighties were fun . eighties music .
+The meeting is Mon.-Fri., 9-5.	the meeting is monday to friday , nine to five .
+Open Mon.-Sat. 10am-6pm.	open monday to saturday ten _A_M to six _P_M .
+Open Mon-Fri. Closed weekends.	open monday to friday . closed weekends .
+The baby is 6 mos. old.	the baby is six months old .
+Approx. 300 people attended.	approximately three hundred people attended .
+The A/C is broken. A/B testing, I/O, P/E ratio, N/A, his/her, and/or, w/o.	the _A_C is broken . _A_B testing , _I_O , _P_E ratio , _N_A , his or her , and or , without .
+Lat 40.7128° N, long 74.0060° W.	lat forty point seven one two eight degrees north , long seventy four point zero zero six zero degrees west .
+The room is 12' x 15'.	the room is twelve feet by fifteen feet .
+The board is 3 x 4.	the board is three times four .
+The call is at 3 PM EST.	the call is at three _P_M _E_S_T .
+It opens at 9 AM PDT and 5 PM GMT.	it opens at nine _A_M PDT and five _P_M GMT .
+At 10:00 UTC, 6 PM IST.	at ten o'clock UTC , six _P_M IST .
+Press Ctrl+C or Cmd+Q, then Esc.	press ctrl _C or cmd _Q , then esc .
+Meet at noon CST on Monday.	meet at noon CST on monday .
+Press Ctrl+Shift+T.	press ctrl shift _T .
+Hit Alt+F4 or Cmd+Shift+4.	hit alt _F four or cmd shift four .
+C++ and A+B and 2+2	_C plus plus and _A plus _B and two plus two
+SHIFT+ENTER	SHIFT ENTER
+Update to version 3.12 now.	update to version three point twelve now .
+Python 3.12 is out.	python three point twelve is out .
+Python 3.9 and Python 3.05.	python three point nine and python three point zero five .
+Rust 1.75 and Node 20.11.	rust one point seventy five and node twenty point eleven .
+iOS 17.2 shipped.	_I OS seventeen point two shipped .
+He lives in Boston, MA 02139.	he lives in boston , massachusetts zero two one three nine .
+He was born in St. Louis, MO.	he was born in saint louis , missouri .
+She moved to Austin, TX, last year.	she moved to austin , texas , last year .
+Jane Doe, MD, will see you.	jane doe , MD , will see you .
+Denver, CO	denver , colorado
+Thanks, OK.	thanks , ok .
+It costs 3.12 dollars.	it costs three point one two dollars .
+Portland, OR.	portland , oregon .
+Portland, ME is cold.	portland , me is cold .
+Columbus, OH.	columbus , ohio .
+Indianapolis, IN, is big.	indianapolis , indiana , is big .
+Sure, OK.	sure , ok .
+Oh, HI.	oh , hi .
+WAIT, OR.	WAIT , or .
+Buy an iPhone15 or a MacBook2 or GPT4o or PlayStation5.	buy an _I phone fifteen or a macbook two or GPT four _O or play station five .
+The XMLHttpRequest2 and getElementById3 calls.	the XML _H_T_T_P request two and get element by id three calls .
+Play the Bb major scale, then the F#7 chord.	play the _B flat major scale , then the _F sharp seven chord .
+Speedrun WR: 1:23:45.67.	speedrun WR : one twenty three forty five point six seven .
+Her lap was 3:42.17 flat.	her lap was three forty two point one seven flat .
+The alarm went off at 10:30:05.	the alarm went off at ten thirty oh five .
+Apply by 10/31; ref. #JR-20419.	apply by ten thirty one ; reference number JR two zero four one nine .
+The meeting is 2-3pm ET / 11am-12pm PT.	the meeting is two to three _P_M ET , eleven _A_M to twelve _P_M PT .
+Free shipping on orders $35+.	free shipping on orders thirty five dollars plus .
+Requirements: 5+ yrs exp., BS/MS in CS.	requirements : five plus years experience , BS or MS in CS .
+It releases 286 kJ/mol.	it releases two hundred eighty six kilojoules per mole .
+Expect 2-4 in. of snow overnight.	expect two to four inches of snow overnight .
+The board is 12 in. Then sand it.	the board is twelve inches . then sand it .
+Answer Q1-Q10 tonight.	answer _Q one to _Q ten tonight .
+Symphony No. 9 in D minor, Op. 125.	symphony number nine in d minor , opus one hundred twenty five .
+Error 0x80070005: access denied.	error zero _X eight zero zero seven zero zero zero five : access denied .
+Go to Settings > Privacy > Location Services.	go to settings , privacy , location services .
+If x > 5, stop.	if x greater than five , stop .
+The 3BR/2BA house is 1,850 sq ft on a 0.25-acre lot.	the three bedroom two bath house is one thousand eight hundred fifty square feet on a zero point two five acre lot .
+It is 1 sq. mi. in area.	it is one square mile in area .
+Rates hit 6.8% for a 30-yr fixed, a 5-min walk away.	rates hit six point eight percent for a thirty year fixed , a five minute walk away .
+This is an on-site role, M-F 9-5.	this is an on site role , monday to friday nine to five .
+Salary plus 401(k) match under 501(c)(3) rules.	salary plus four oh one _K match under five oh one _C three rules .
+Then 2(3) is six.	then two three is six .
+Port 8080 is blocked.	port eighty eighty is blocked .
+Call me at ext. 4417.	call me at extension four four one seven .
+Rep. Smith (D-CA) and Sen. Jones (R-TX) co-sponsored it.	representative smith , democrat of california , and senator jones , republican of texas , co sponsored it .
+Open house Sat 1-4 PM.	open house saturday one to four _P_M .
+It's 3 for $10 through Sun.	it's three for ten dollars through sunday .
+Size M, qty 2.	size m , quantity two .
+idk, maybe next wk?	_I_D_K , maybe next week ?
+Call me at ext. 42 or ext. 204.	call me at extension forty two or extension two zero four .

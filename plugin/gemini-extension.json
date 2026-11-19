@@ -1,0 +1,21 @@
+{
+  "name": "lipservice",
+  "version": "0.1.0",
+  "description": "Gives a model a voice: text said aloud and written scores sung, in sixteen English voices, on this machine's own CPU",
+  "mcpServers": {
+    "lipservice": {
+      "command": "lipservice",
+      "args": [
+        "mcp"
+      ]
+    }
+  },
+  "settings": [
+    {
+      "name": "Folder for sound",
+      "description": "Where a WAV file goes when a call names no device to play through and no full path. Left empty, such a call is refused.",
+      "envVar": "LIPSERVICE_OUT",
+      "sensitive": false
+    }
+  ]
+}

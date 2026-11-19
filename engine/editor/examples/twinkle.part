@@ -1,0 +1,64 @@
+lipservice part 2
+title Twinkle, Twinkle, Little Star
+grid 480
+
+voice 2428
+seed 5
+shift 0
+join 0
+glide 9
+dynamics 1.3
+breathiness 0.35
+diction 1
+motion vibrato
+sway 1
+jitter 2
+detune 3
+spread 0
+breath 0.85
+
+tempo 0 96
+meter 0 4/4
+
+note 0 1 C3 76 64 Twin-
+note 1 1 C3 68 64 kle,
+note 2 1 G3 76 64 twin-
+note 3 1 G3 68 64 kle,
+note 4 1 A3 76 64 lit-
+note 5 1 A3 68 64 tle
+note 6 1.5 G3 80 64 star,/
+note 8 1 F3 72 64 How
+note 9 1 F3 64 64 I
+note 10 1 E3 72 64 won-
+note 11 1 E3 64 64 der
+note 12 1 D3 72 64 what
+note 13 1 D3 64 64 you
+note 14 1.5 C3 76 64 are!/
+note 16 1 G3 84 64 Up
+note 17 1 G3 76 64 a-
+note 18 1 F3 84 64 bove
+note 19 1 F3 76 64 the
+note 20 1 E3 84 64 world
+note 21 1 E3 76 64 so
+note 22 1.5 D3 88 64 high,/
+note 24 1 G3 80 64 Like
+note 25 1 G3 72 64 a
+note 26 1 F3 80 64 dia-
+note 27 1 F3 72 64 mond
+note 28 1 E3 80 64 in
+note 29 1 E3 72 64 the
+note 30 1.5 D3 84 64 sky./
+note 32 1 C3 70 64 Twin-
+note 33 1 C3 62 64 kle,
+note 34 1 G3 70 64 twin-
+note 35 1 G3 62 64 kle,
+note 36 1 A3 70 64 lit-
+note 37 1 A3 62 64 tle
+note 38 1.5 G3 74 64 star,/
+note 40 1 F3 64 64 How
+note 41 1 F3 56 64 I
+note 42 1 E3 64 64 won-
+note 43 1 E3 56 64 der
+note 44 1 D3 64 64 what
+note 45 1 D3 56 64 you
+note 46 1.5 C3 68 64 are!/

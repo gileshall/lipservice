@@ -1,0 +1,12 @@
+{
+  "name": "lipservice",
+  "description": "Lip Service for Claude: speech and singing on your own CPU",
+  "owner": {"name": "Giles Hall"},
+  "plugins": [
+    {
+      "name": "lipservice",
+      "source": "./plugin",
+      "description": "Gives Claude a voice: text said aloud and written scores sung, in eight English voices, on this machine's own CPU"
+    }
+  ]
+}
