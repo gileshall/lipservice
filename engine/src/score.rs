@@ -20,20 +20,28 @@ const UNVOICED: [&str; 8] = ["P", "T", "K", "F", "TH", "S", "SH", "CH"];
 const UNVOICED_EDGE: usize = 2;
 
 /// Each frame's voicing taken off: an unvoiced consonant's frames but UNVOICED_EDGE at each edge
-/// beside another sound; a pause's (the space after a stop), which the pitch voices as a word gap
-/// and the decoder then sounds, but UNVOICED_EDGE at either end.
+/// beside another sound, the sound across a word gap; a word gap's between two unvoiced consonants
+/// (the hiss of "not saying" falls in it); a pause's (the space after a stop), which the pitch
+/// voices as a word gap and the decoder then sounds, but UNVOICED_EDGE at either end.
 pub(crate) fn unvoiced_frames(tok: &[usize], durations: &[usize]) -> Vec<bool> {
     assert_eq!(tok.len(), durations.len());
     let un = |i: usize| UNVOICED.contains(&front::symbol(tok[i]));
     let pause = |i: usize| i > 0 && tok[i] == front::SPACE && matches!(front::symbol(tok[i - 1]), "," | "." | "?" | "!" | ";" | ":");
+    let gap = |i: usize| tok[i] == front::SPACE && !pause(i);
+    let before = |i: usize| (0..i).rev().find(|&j| !gap(j));
+    let after = |i: usize| (i + 1..tok.len()).find(|&j| !gap(j));
     let mut out = Vec::with_capacity(durations.iter().sum());
     for (i, &d) in durations.iter().enumerate() {
         if pause(i) {
             out.extend((0..d).map(|f| f >= UNVOICED_EDGE && f + UNVOICED_EDGE < d));
             continue;
         }
-        let lead = if i > 0 && !un(i - 1) { UNVOICED_EDGE } else { 0 };
-        let tail = if i + 1 < tok.len() && !un(i + 1) { UNVOICED_EDGE } else { 0 };
+        if gap(i) && before(i).is_some_and(un) && after(i).is_some_and(un) {
+            out.extend((0..d).map(|_| true));
+            continue;
+        }
+        let lead = if before(i).is_some_and(|j| !un(j)) { UNVOICED_EDGE } else { 0 };
+        let tail = if after(i).is_some_and(|j| !un(j)) { UNVOICED_EDGE } else { 0 };
         let u = un(i);
         out.extend((0..d).map(|f| u && f >= lead && f + tail < d));
     }
@@ -454,6 +462,20 @@ mod tests {
         let durations = [3, 3, 8, 4, 9, 2, 3, 7, 4, 3, 4, 3, 2, 5, 4, 3];
         let got: String = unvoiced_frames(&tok, &durations).iter().map(|&u| if u { 'x' } else { '.' }).collect();
         let want = ["...", "...", "........", "....", "..xxxxx..", "..", "...", "..xxx..", "....", "...", "....", "...", "..", ".....", "....", "..."].concat();
+        assert_eq!(got, want);
+    }
+
+    #[test]
+    fn a_word_gap_between_unvoiced_consonants_is_unvoiced_and_lends_them_no_edge() {
+        // "not saying", "it's a"
+        let tok: Vec<usize> = ["N", "AA1", "T", " ", "S", "EY1", "IH0", "T", "S", " ", "AH0"]
+            .iter()
+            .map(|&s| if s == " " { SPACE } else { symbol_id(s).unwrap() })
+            .collect();
+        let tok = [&[BOS][..], &tok, &[EOS]].concat();
+        let durations = [3, 3, 8, 5, 15, 5, 10, 4, 4, 5, 3, 6, 3];
+        let got: String = unvoiced_frames(&tok, &durations).iter().map(|&u| if u { 'x' } else { '.' }).collect();
+        let want = ["...", "...", "........", "..xxx", "xxxxxxxxxxxxxxx", "xxx..", "..........", "....", "..xx", "xxx..", "...", "......", "..."].concat();
         assert_eq!(got, want);
     }
 }

@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Giles Hall
 
-// The stage (stage.js) drawn on a canvas that records where it is drawn on, and tapped: everything
-// it draws is inside its canvas at any width and size of choir, and a tap on a singer asks for that
-// singer alone where the stage's singers can be.
+// The stage (stage.js) drawn on a canvas that records where its words are written, and tapped: its
+// singers, their light and breath, and its words are inside its canvas at any width and size of
+// choir (the glow and the way to the listener, below, may run out of it), and a tap on a singer asks
+// for that singer alone where the stage's singers can be.
 //
 //     node stage_test.mjs
 
@@ -25,8 +26,8 @@ class El {
 globalThis.document = { documentElement: {}, createElement: () => new El() };
 const { Stage, layout } = await import("./stage.js");
 
-// a canvas `w` wide whose context keeps the box of all that is drawn: arcs as far as they go,
-// lines, and text (7 px a letter, 9 px tall above its line)
+// a canvas `w` wide whose context keeps the box of the text written on it (7 px a letter, 9 px tall
+// above its line)
 function canvas(w) {
   const cv = new El();
   const box = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
@@ -35,13 +36,7 @@ function canvas(w) {
   const g = {
     setTransform() {}, clearRect() {}, beginPath() {}, fill() {}, stroke() {}, setLineDash() {},
     createRadialGradient: () => ({ addColorStop() {} }),
-    arc(x, y, r, a, b, ccw = false) {
-      let d = b - a;
-      if (ccw && d > 0) d -= 2 * Math.PI;
-      if (!ccw && d < 0) d += 2 * Math.PI;
-      for (let k = 0; k <= 256; k++) at(x + r * Math.cos(a + d * k / 256), y + r * Math.sin(a + d * k / 256));
-    },
-    moveTo: at, lineTo: at,
+    arc() {}, moveTo() {}, lineTo() {},
     measureText: (s) => ({ width: 7 * String(s).length }),
     fillText(s, x, y) { const tw = 7 * String(s).length, x0 = align === "center" ? x - tw / 2 : x; at(x0, y - 9); at(x0 + tw, y + 2); },
     set textAlign(v) { align = v; }, get textAlign() { return align; },
@@ -65,7 +60,6 @@ const spec = (n, more = {}) => {
 { // everything drawn is on the canvas
   let worst = Infinity, where = "", bad = [];
   for (const w of [300, 360, 420, 520, 650, 800, 968, 1200, 1600]) {
-    const { h, cx, cy, R } = layout(w);
     for (const n of [1, 3, 4, 8, 16, 24, 40, 60, 100]) {
       const { cv, box, reset } = canvas(w), st = new Stage(cv, new El()), s = spec(n);
       st.set(s);
@@ -74,16 +68,17 @@ const spec = (n, more = {}) => {
         st.pick = pick < 0 ? null : pick;
         st.draw(0, 1);
         st.draw(0, 1); // the second time every singer is at the loudest known
+        const h = layout(w, Math.max(...s.seats.map((x) => x.row)) + 1).h, r = 3.2 * st.size;
+        for (const p of st.placed) Object.assign(box, { x0: Math.min(box.x0, p.x - r), x1: Math.max(box.x1, p.x + r), y0: Math.min(box.y0, p.y - r), y1: Math.max(box.y1, p.y + r) });
         const m = Math.min(box.x0, box.y0, w - box.x1, h - box.y1);
         if (m < worst) { worst = m; where = `${n} singers on ${w} px, singer ${pick} tapped`; }
         if (m < 0) bad.push(`${w}px ${n} singers pick ${pick}: ${JSON.stringify(box)} in ${w}x${h}`);
       }
     }
-    if (!(R > 0 && cy - 1.25 * R >= 0 && cx - 1.25 * R * Math.sin(1.2) >= 0)) bad.push(`${w}px: the glow is off the canvas`);
   }
-  check(bad.length === 0, `stage: at every width and size of choir, with the hall ringing, every singer loud and breathing and any one tapped, all that is drawn is on the canvas (nearest its edge: ${worst.toFixed(1)} px, ${where})${bad.length ? `: ${bad.slice(0, 3).join("; ")}` : ""}`);
-  const a = layout(968), b = layout(1600), c = layout(360);
-  check(a.R >= 296 && a.h <= 400 && b.h === 400 && b.R === a.R && c.h === 220 && c.R > 120, `stage: on a page 968 px wide the back row is ${a.R.toFixed(0)} px from the listener on a canvas ${a.h} px tall (${c.R.toFixed(0)} px on ${c.h} at 360 wide)`);
+  check(bad.length === 0, `stage: at every width and size of choir, with the hall ringing, every singer loud and breathing and any one tapped, the singers' light and breath and the words are on the canvas (nearest its edge: ${worst.toFixed(1)} px, ${where})${bad.length ? `: ${bad.slice(0, 3).join("; ")}` : ""}`);
+  const a = layout(968), b = layout(1600), c = layout(360), d = layout(968, 3);
+  check(a.R >= 296 && a.h <= 200 && b.h === a.h && b.R === a.R && c.h <= 130 && c.R > 120 && d.R === a.R && d.h <= 280, `stage: on a page 968 px wide the back row is ${a.R.toFixed(0)} px from the listener on a canvas ${a.h} px tall (${c.R.toFixed(0)} px on ${c.h} at 360 wide)`);
 }
 
 { // taps
@@ -92,7 +87,7 @@ const spec = (n, more = {}) => {
   const s = spec(8, { alone: () => alone, tap: (who, more) => { taps.push([who, more]); if (!takes) return false; if (!who.length) alone = new Set(); else if (more) { alone = new Set(alone); alone.add(who[0]); } else alone = alone.has(who[0]) && alone.size === 1 ? new Set() : new Set(who); return true; } });
   st.set(s);
   st.draw(0, null);
-  const tap = (i, e = {}) => cv.on.pointerdown({ clientX: i === null ? layout(968).cx : st.placed[i].x + 3, clientY: i === null ? layout(968).cy : st.placed[i].y - 2, ...e });
+  const tap = (i, e = {}) => cv.on.pointerdown({ clientX: i === null ? 4 : st.placed[i].x + 3, clientY: i === null ? 4 : st.placed[i].y - 2, ...e });
   tap(3);
   check(JSON.stringify(taps) === "[[[3],false]]" && st.pick === 3 && !card.hidden && card.children[0].textContent === "s3", "tap: a singer tapped is asked for alone, and its card shown");
   s.asked.level.length = s.asked.breath.length = 0;

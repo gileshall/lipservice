@@ -12,7 +12,7 @@
 import * as P from "./part.js";
 import * as M from "./midi.js";
 import * as S from "./score.js";
-import { Editor, History, View, bars, steps, snap, hit, sounding, typed, clicks } from "./edit.js";
+import { Editor, History, View, bars, steps, snap, hit, sounding, typed, clicks, syllables } from "./edit.js";
 import { problems, clock, tickAt as tickAfter } from "./song.js";
 import { MENU } from "./examples/menu.js";
 import { pull } from "./pull.js";
@@ -21,7 +21,8 @@ import { Mix } from "./mix.js";
 import { filesOf } from "./site.js";
 
 // the roll's left gutter and its rows, pixels
-const GUT = 56, RULER = 30, WORDS = 30, VEL = 64, VIB = 92;
+const GUT = 56, RULER = 30, WORDS = 30;
+const LANES = { vel: 64, vib: 92 }; // the velocity and vibrato rows' heights, where they are drawn: not on a phone
 const KEEP = "lipservice editor: the score";
 const KEPT_PART = "lipservice editor: the part"; // what the page kept when it held one singer
 const SET = "lipservice editor: the page 2";
@@ -31,15 +32,23 @@ const PRE = 2400; // samples of sound before a place sung from: a note there kee
 const HEAD = RATE; // samples of the speaker's line before the parts' beat 0: room for each singer's lead-in
 const SOON = 7200; // samples ahead of the sound that a singer sung anew starts from
 const BLACK = [1, 3, 6, 8, 10];
-// the site's sounds as the panel names them (the site's routes.js)
 // a first visit's example, and what it is told
 const FIRST = "round.score";
 const HELLO = "Start here: press Sing, or the space bar, to hear this round for three singers.\nClick a singer's tab to see its notes. Drag a note to move it. Double click an empty spot to add one.\nThe editor needs a mouse and a keyboard. It does not work by touch.";
+// and on a phone, where the notes are heard and watched and the words changed, not the notes
+const HELLO_PHONE = "Press Sing to hear this round for three singers.\nPress and hold a note, then drag it to move it; hold its right end to change its length.\nTap the ruler at the top of the notes to choose where singing starts.\nChange the words below and press Use these words to hear your own.";
 // A voice as the page names it: the name in its label, with nothing of a bracket after it. The
 // name a part calls its voice by (the voice list's `name`) is the file's, and is not shown.
 const called = (v) => v.label.split(" (")[0];
 const SEX = { F: "woman", M: "man" };
-const SOUNDS = { hifi: "hifi: the fullest sound", fast: "fast: the earlier engine, about twice as quick" };
+// The quality the visitor chose (a route of the site's routes.js), kept for every page of the site,
+// JSON-encoded as the site keeps it; and what the panel says of the one in use, by why it is in use.
+const QUALITY = "lipservice-quality";
+const WHY = {
+  chosen: { hifi: "Better sound. Fast is about twice as quick.", fast: "About twice as quick. Hifi sounds better." },
+  default: { hifi: "Better sound. Fast is about twice as quick.", fast: "About twice as quick. Hifi sounds better." },
+  phone: { fast: "Fast on phones, so singing keeps up. Hifi sounds better." },
+};
 // The roll's colors, each singer's and the roll's type: the page's own custom properties
 // (editor.css :root, --roll-* and --singer-1 to 8), read at boot, so a site that dresses the editor
 // sets its own.
@@ -48,6 +57,11 @@ const SINGERS = 8;
 let C = null, COLORS = null, FONT = null;
 
 export function boot({ document, window, web, models, welcome = false }) {
+  // A phone: the roll is watched, moved and pinched, not drawn on; the panel holds the voice, the
+  // shift, the words and the quality (editor.css, html.phone).
+  const phone = window.navigator.userAgentData?.mobile ?? /Mobi|Android|iPhone|iPad/.test(window.navigator.userAgent);
+  if (phone) document.documentElement.className = "phone";
+  const VEL = phone ? 0 : LANES.vel, VIB = phone ? 0 : LANES.vib;
   for (const [k, v] of [["web", web], ["models", models]]) if (typeof v !== "string" || !v.endsWith("/")) throw new Error(`boot: ${k} is a folder's address, ending in /, not ${v}`);
   const style = window.getComputedStyle(document.documentElement);
   const prop = (name) => {
@@ -119,7 +133,7 @@ export function boot({ document, window, web, models, welcome = false }) {
   let tapped = { at: -Infinity, x: 0, y: 0 }; // the press before this one
   let W = 0, H = 0;
   const pool = []; // the workers that sing (singer.js), a singer's by its place
-  const cores = window.navigator?.hardwareConcurrency;
+  const cores = window.navigator.hardwareConcurrency;
   const WORKERS = cores ? Math.max(1, Math.min(4, cores - 2)) : 2;
   let audio = null, speaker = null, mix = null; // the sound's context, its speaker.js loading, and the mix's nodes (mix.js)
   let jobs = 0, runs = 0; // the singers' jobs, and the singings
@@ -135,10 +149,16 @@ export function boot({ document, window, web, models, welcome = false }) {
   //   heard    the speaker's last word of where it is; ended: the context's sample it ended at}
   let playing = null;
   // what the page is set to, kept between visits: the loop (ticks; none where to is not after from),
-  // the click, the ms added to the speaker's lateness, whether the other singers' notes show, and
-  // the sound chosen (a route of the site's; null: its first)
-  const set = { loop: { on: false, from: 0, to: 0 }, click: { on: false, volume: 50 }, delay: 0, others: true, route: null };
-  let routes = null; // the site's sounds, once it has said
+  // the click, the ms added to the speaker's lateness, and whether the other singers' notes show
+  const set = { loop: { on: false, from: 0, to: 0 }, click: { on: false, volume: 50 }, delay: 0, others: true };
+  let routes = null; // the site's qualities, once it has said
+  let radios = []; // the panel's choice of them
+  let chosen = null; // the quality the visitor chose, on this page or another of the site's (QUALITY)
+  let made = null; // the quality the workers in the pool sing by, null where they were asked for none: the site's first
+  // The quality in use, and why: the one chosen; else fast on a phone, where the site has it; else
+  // the site's first. null until the site has said what it has, unless one was chosen.
+  const quality = () => chosen ?? (routes ? (phone && routes.includes("fast") ? "fast" : routes[0]) : null);
+  const why = () => (chosen ? "chosen" : phone && routes?.includes("fast") ? "phone" : "default");
   let cursor = 0; // the tick Sing starts from
 
   const color = (i) => COLORS[i % COLORS.length];
@@ -146,6 +166,19 @@ export function boot({ document, window, web, models, welcome = false }) {
   const name = (i) => {
     const part = desk.value.rows[i].ed.part, v = voices.find((x) => x.name === part.singer.voice);
     return part.title || (v ? called(v) : `Singer ${i + 1}`);
+  };
+  const singerName = (e) => name(desk.value.rows.findIndex((r) => r.ed === e));
+  // the other singers who sing the words this one sings
+  const alike = () => {
+    const mine = typed(ed.part.notes);
+    return ed.part.notes.length ? desk.value.rows.map((r) => r.ed).filter((e) => e !== ed && e.part.notes.length && typed(e.part.notes) === mine) : [];
+  };
+  // the words typed counted against the notes they go under
+  let draft = null; // {ed, text}: the words typed for a singer and not yet under its notes, kept in the box
+  const counted = () => {
+    const n = syllables($("words").value).length, room = ed.part.notes.length;
+    $("words-count").textContent = `${n} ${n === 1 ? "syllable" : "syllables"} for ${room} ${room === 1 ? "note" : "notes"}${n > room ? ": too many" : ""}`;
+    $("words-count").className = n > room ? "said bad" : "said";
   };
   // the score as its file has it
   const score = () => {
@@ -234,6 +267,10 @@ export function boot({ document, window, web, models, welcome = false }) {
       f();
       ctx.restore();
     };
+    if (phone) {
+      const now = aloud() ? "Stop" : "Sing";
+      if ($("sing").textContent !== now) $("sing").textContent = now;
+    }
     ctx.font = FONT;
     ctx.textBaseline = "middle";
     ctx.fillStyle = C.bg;
@@ -369,7 +406,7 @@ export function boot({ document, window, web, models, welcome = false }) {
     });
 
     // the words, the velocities and the vibrato under the roll
-    for (const [y, name] of [[r.words, "words"], [r.vel, "velocity"], [r.vib, "vibrato"]]) {
+    for (const [y, name] of [[r.words, "words"], ...(phone ? [] : [[r.vel, "velocity"], [r.vib, "vibrato"]])]) {
       line(0, y, W, y, C.bar);
       ctx.fillStyle = C.dim;
       ctx.fillText(name, 6, y + 12);
@@ -441,9 +478,11 @@ export function boot({ document, window, web, models, welcome = false }) {
     }
     const now = heardAt();
     if (now !== null && X(now) >= GUT) line(X(now), 0, X(now), H, C.ink);
-    ctx.fillStyle = C.dim;
-    ctx.fillText(top().toFixed(1), GUT - 26, r.vib + 8);
-    ctx.fillText("0", GUT - 12, r.vib + VIB - 8);
+    if (!phone) {
+      ctx.fillStyle = C.dim;
+      ctx.fillText(top().toFixed(1), GUT - 26, r.vib + 8);
+      ctx.fillText("0", GUT - 12, r.vib + VIB - 8);
+    }
     line(GUT, RULER, GUT, H, C.bar);
   }
 
@@ -723,7 +762,9 @@ export function boot({ document, window, web, models, welcome = false }) {
     if (!focused($("s-motion"))) $("s-motion").value = part.singer.motion ?? "-";
     fields.tempo.set(tempoAt(part, cursor).bpm);
     if (!focused($("text"))) $("text").value = P.write(part);
-    if (!focused($("words"))) $("words").value = typed(part.notes);
+    if (!focused($("words"))) $("words").value = draft?.ed === ed ? draft.text : typed(part.notes);
+    $("words-all-row").hidden = !alike().length;
+    counted();
     $("undo").disabled = !journal.past.length;
     $("redo").disabled = !journal.future.length;
     $("draw").setAttribute("aria-pressed", String(drawing));
@@ -801,9 +842,22 @@ export function boot({ document, window, web, models, welcome = false }) {
   // the roll wide and tall enough for every singer's notes; while the roll has no width (the
   // mixer is in sight, or the window has no size) it is owed, and size() does it
   let owed = false;
+  // every note in view; on a phone, no narrower than a note of the middling length is wide enough
+  // for its syllable to be read (the roll follows the singing along), and the keys as tall as the
+  // singer in sight's notes allow, centred on them
+  const READ = 26; // pixels
   function fit() {
     owed = W <= GUT;
-    if (!owed) view.fit({ ...ed.part, notes: desk.value.rows.flatMap((r) => r.ed.part.notes) }, W - GUT, rows().roll);
+    if (owed) return;
+    const notes = desk.value.rows.flatMap((r) => r.ed.part.notes);
+    view.fit({ ...ed.part, notes }, W - GUT, rows().roll);
+    if (phone && notes.length) {
+      const ticks = notes.map((n) => n.ticks).sort((a, b) => a - b)[Math.floor(notes.length / 2)];
+      if (view.wide * ticks < READ) view.zoom(READ / (view.wide * ticks), 0);
+      const mine = ed.part.notes.length ? ed.part.notes : notes, keys = mine.map((n) => P.key(n.pitch)), lo = Math.min(...keys), hi = Math.max(...keys), roll = rows().roll;
+      view.tall = Math.max(12, Math.min(20, roll / (hi - lo + 3)));
+      view.top = Math.min(127, (hi + lo) / 2 + roll / view.tall / 2);
+    }
   }
 
   // A score in the desk's place, as a file opened gives it. Undo brings the last one back.
@@ -972,10 +1026,11 @@ export function boot({ document, window, web, models, welcome = false }) {
   function worker(slot) {
     const k = slot % WORKERS;
     if (!pool[k]) {
+      if (!pool.some(Boolean)) made = quality();
       const url = new URL("./singer.js", import.meta.url);
       url.searchParams.set("web", web);
       url.searchParams.set("models", models);
-      if (set.route !== null) url.searchParams.set("route", set.route);
+      if (made !== null) url.searchParams.set("route", made);
       pool[k] = new window.Worker(url, { type: "module" });
       pool[k].onmessage = heard;
       pool[k].onerror = (e) => {
@@ -1066,6 +1121,7 @@ export function boot({ document, window, web, models, welcome = false }) {
     } else if (m.type === "ended") {
       playing.heard ??= { pos: playing.end, frame: audio.currentTime * RATE, running: false, rounds: 0, stalls: 0 };
       playing.ended = audio.currentTime * RATE;
+      paintSoon();
     }
   }
 
@@ -1123,19 +1179,30 @@ export function boot({ document, window, web, models, welcome = false }) {
     }
   }
 
-  // Another of the site's sounds chosen: the workers, each loaded with the one before, are let
-  // go, and where the score is sung it is sung again from where the sound is.
+  // A quality chosen: kept for every page of the site, and where the workers sing by another, they
+  // are let go and the score, where it is sung, sung again from where the sound is.
   function reroute(by) {
-    if (!routes.includes(by)) throw new Error(`this site has no ${by} sound (it has ${routes.join(" and ")})`);
-    if (by === (set.route ?? routes[0])) return;
+    if (!routes) throw new Error("the site has not said yet which qualities it has");
+    if (!routes.includes(by)) throw new Error(`this site has no ${by} quality (it has ${routes.join(" and ")})`);
+    chosen = by;
+    try {
+      window.localStorage.setItem(QUALITY, JSON.stringify(by));
+    } catch (e) {
+      say(`the quality is not kept for the next visit: ${e.message}`, true);
+    }
+    shown();
+    if (requalify()) say(`every singer is sung in ${by}`);
+  }
+  // The workers let go where they sing by another quality than the one in use, and the score,
+  // where it is sung, sung again by new ones from where the sound is. Whether they were.
+  function requalify() {
+    if (!pool.some(Boolean) || (made ?? routes[0]) === quality()) return false;
     const at = playing && playing.ended === null ? heardAt() ?? playing.start : null;
     stop();
     for (const w of pool) w?.terminate();
     pool.length = 0;
-    set.route = by;
-    shown();
-    say(`every singer is sung by the ${by} sound`);
     if (at !== null) sing(at);
+    return true;
   }
 
   // the singing let go of, the speaker told nothing
@@ -1262,7 +1329,10 @@ export function boot({ document, window, web, models, welcome = false }) {
     $("others").setAttribute("aria-pressed", String(set.others));
     fields["click-volume"].set(set.click.volume);
     fields.delay.set(set.delay);
-    if (routes) $("route").value = set.route ?? routes[0];
+    if (routes) {
+      for (const r of radios) r.checked = r.value === quality();
+      $("route-said").textContent = WHY[why()][quality()];
+    }
     if (mix) mix.set(score(), level());
     keepSet();
     paintSoon();
@@ -1578,10 +1648,113 @@ export function boot({ document, window, web, models, welcome = false }) {
 
   // ---------------------------------------------------------------- wiring
 
-  canvas.addEventListener("pointerdown", down);
-  canvas.addEventListener("pointermove", move);
-  canvas.addEventListener("pointerup", up);
-  canvas.addEventListener("pointercancel", up);
+  // On a phone a finger moves the roll, two pinch it (apart sideways, wider in time; up and down,
+  // taller in pitch). A tap on the ruler sets where singing starts (while it sings, it jumps
+  // there); on a note, chooses it. A finger held still takes hold of the note nearest it, any
+  // singer's (whose tab is then shown): dragged, the note moves, or by its right end it grows or
+  // shrinks; let go, it is sung from a beat before.
+  const HOLD = 350; // ms a finger is held still to take hold of a note
+  const REACH = 24; // pixels from a note a finger may be and still take hold of it
+  const EDGE = 16; // pixels of a note's right end that take hold of its length
+  // the note nearest (x, y) within REACH, this singer's before another's as near: {i (its singer), note, end}
+  const nearest = (x, y) => {
+    let best = null;
+    desk.value.rows.forEach((r, i) => {
+      for (const n of r.ed.part.notes) {
+        const x0 = GUT + view.x(n.at), x1 = x0 + n.ticks * view.wide, mid = RULER + view.y(P.key(n.pitch)) + view.tall / 2;
+        const d = Math.hypot(x < x0 ? x0 - x : x > x1 ? x - x1 : 0, Math.max(0, Math.abs(y - mid) - view.tall / 2)) + (i === cur ? 0 : 0.5);
+        if (d <= REACH && (!best || d < best.d)) best = { i, note: n, d, end: x > x1 - Math.min(EDGE, (x1 - x0) / 3) };
+      }
+    });
+    return best;
+  };
+  const fingers = new Map(); // pointer: where it is
+  let gesture = null; // one finger: {x, y (where it went down), last, moved, timer}; two: {span, tall (apart in x, in y), mid}
+  function hold() {
+    const { x, y } = gesture, tick = tickAt(x), key = keyAt(y);
+    gesture.timer = null;
+    if (region(x, y) !== "roll") return;
+    const h = nearest(x, y);
+    if (!h) return say("no note there to take hold of: hold a finger on one");
+    if (h.i !== cur) show(h.i);
+    ed.select([h.note]);
+    ed.begin();
+    drag = { kind: h.end ? "stretch" : "move", tick, key, note: h.note };
+    window.navigator.vibrate?.(12);
+    say(h.end ? "drag to change the note's length" : "drag to move the note");
+    refresh();
+  }
+  const letGo = () => {
+    if (gesture?.timer) window.clearTimeout(gesture.timer);
+  };
+  const pinch = () => {
+    const [a, b] = [...fingers.values()];
+    return { span: Math.abs(a[0] - b[0]), tall: Math.abs(a[1] - b[1]), mid: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] };
+  };
+  const one = (p, moved) => ({ x: p[0], y: p[1], last: p, moved });
+  function touchDown(e) {
+    if (drag) return; // a note held: other fingers do nothing
+    canvas.setPointerCapture?.(e.pointerId);
+    fingers.set(e.pointerId, at(e));
+    letGo();
+    if (fingers.size === 1) gesture = { ...one(at(e), false), timer: window.setTimeout(hold, HOLD) };
+    else if (fingers.size === 2) gesture = pinch();
+  }
+  function touchMove(e) {
+    if (!fingers.has(e.pointerId)) return;
+    if (drag) return move(e);
+    const p = at(e);
+    fingers.set(e.pointerId, p);
+    if (fingers.size === 1) {
+      if (!gesture.moved && Math.hypot(p[0] - gesture.x, p[1] - gesture.y) < 8) return;
+      letGo();
+      view.scroll(gesture.last[0] - p[0], gesture.last[1] - p[1], rows().roll);
+      gesture = { ...gesture, last: p, moved: true };
+    } else if (fingers.size === 2) {
+      const now = pinch();
+      view.zoom(Math.max(now.span, 30) / Math.max(gesture.span, 30), Math.max(0, now.mid[0] - GUT));
+      view.heighten(Math.max(now.tall, 30) / Math.max(gesture.tall, 30), Math.max(0, now.mid[1] - RULER));
+      view.scroll(gesture.mid[0] - now.mid[0], gesture.mid[1] - now.mid[1], rows().roll);
+      gesture = now;
+    }
+    paintSoon();
+  }
+  function touchUp(e) {
+    canvas.releasePointerCapture?.(e.pointerId);
+    if (!fingers.delete(e.pointerId)) return;
+    letGo();
+    if (drag) {
+      drag = null;
+      gesture = null;
+      ed.end();
+      refresh();
+      const n = first();
+      if (n && e.type === "pointerup") sing(Math.max(0, n.at - ed.part.grid));
+      return;
+    }
+    if (fingers.size) {
+      gesture = one([...fingers.values()][0], true);
+      return;
+    }
+    const [x, y] = at(e), tap = e.type === "pointerup" && gesture.x !== undefined && !gesture.moved;
+    gesture = null;
+    if (!tap) return;
+    const where = region(x, y);
+    if (where === "ruler") return attempt(() => place(snap(tickAt(x), step)));
+    if (where !== "roll") return;
+    const h = nearest(x, y);
+    if (h && h.i !== cur) show(h.i);
+    ed.select(h ? [h.note] : []);
+    if (h) say("hold the note to drag it");
+    refresh();
+  }
+  // iOS takes a finger held still for its own (a selection, a callout) and cancels it: refused, the
+  // roll's pointers keep it
+  if (phone) canvas.addEventListener("touchstart", (e) => e.preventDefault(), { passive: false });
+  canvas.addEventListener("pointerdown", phone ? touchDown : down);
+  canvas.addEventListener("pointermove", phone ? touchMove : move);
+  canvas.addEventListener("pointerup", phone ? touchUp : up);
+  canvas.addEventListener("pointercancel", phone ? touchUp : up);
   canvas.addEventListener("wheel", wheel, { passive: false });
   document.addEventListener("keydown", key);
   new window.ResizeObserver(size).observe(canvas);
@@ -1658,7 +1831,13 @@ export function boot({ document, window, web, models, welcome = false }) {
   $("save-score").addEventListener("click", () => save("score"));
   $("save-part").addEventListener("click", () => save("part"));
   $("save-midi").addEventListener("click", () => save("midi"));
-  $("sing").addEventListener("click", () => sing());
+  // on a phone one button sings and stops: Stop while it sounds (paint())
+  const aloud = () => playing !== null && playing.ended === null;
+  $("sing").addEventListener("click", () => {
+    if (!phone || !aloud()) return sing();
+    stop();
+    say("stopped");
+  });
   $("loop").addEventListener("click", () => attempt(toggleLoop));
   $("click").addEventListener("click", () => attempt(() => { set.click.on = !set.click.on; shown(); }));
   $("stop").addEventListener("click", () => {
@@ -1694,16 +1873,27 @@ export function boot({ document, window, web, models, welcome = false }) {
   }, $("n-said")));
   $("s-voice").addEventListener("change", () => attempt(() => ed.singer("voice", $("s-voice").value), $("s-said")));
   $("s-diction").addEventListener("change", () => attempt(() => ed.singer("diction", $("s-diction").checked), $("s-said")));
-  $("route").addEventListener("change", () => attempt(() => {
-    const by = $("route").value;
-    $("route").blur?.();
-    reroute(by);
-  }));
   $("s-motion").addEventListener("change", () => attempt(() => ed.singer("motion", $("s-motion").value === "-" ? null : $("s-motion").value), $("s-said")));
+  // The words under this singer's notes, and, where it is asked, under those of every singer who
+  // sang the same words; on a phone, sung at once from the start.
   $("words-apply").addEventListener("click", () => attempt(() => {
     if (!ed.part.notes.length) throw new Error("no notes to lay the words under");
-    ed.words(ed.part.notes[0], $("words").value);
+    const text = $("words").value, eds = [ed, ...($("words-all").checked ? alike() : [])];
+    for (const e of eds) {
+      const n = syllables(text).length, room = e.part.notes.length;
+      if (n > room) throw new Error(`${n} syllables for ${eds.length > 1 ? `${singerName(e)}'s` : "the"} ${room} ${room === 1 ? "note" : "notes"}`);
+    }
+    together(() => { for (const e of eds) e.words(e.part.notes[0], text); });
+    draft = null;
+    if (phone) {
+      stop();
+      sing(0);
+    }
   }, $("words-said")));
+  $("words").addEventListener("input", () => {
+    draft = { ed, text: $("words").value };
+    counted();
+  });
   // The text read as this singer's part. The score keeps one time: a tempo or a meter changed
   // here is every singer's, and another grid is refused while there are others.
   $("text-apply").addEventListener("click", () => attempt(() => together(() => {
@@ -1749,11 +1939,22 @@ export function boot({ document, window, web, models, welcome = false }) {
     const text = stored(SET, "the loop and the click");
     if (text !== null) {
       const v = JSON.parse(text), whole = (n) => Number.isInteger(n) && n >= 0;
-      if (!(v && v.loop && typeof v.loop.on === "boolean" && whole(v.loop.from) && whole(v.loop.to) && v.click && typeof v.click.on === "boolean" && whole(v.click.volume) && v.click.volume <= 100 && Number.isFinite(v.delay) && typeof v.others === "boolean" && (v.route === undefined || v.route === null || typeof v.route === "string"))) throw new Error(text);
-      Object.assign(set, { loop: { on: v.loop.on, from: v.loop.from, to: v.loop.to }, click: { on: v.click.on, volume: v.click.volume }, delay: v.delay, others: v.others, route: v.route ?? null });
+      if (!(v && v.loop && typeof v.loop.on === "boolean" && whole(v.loop.from) && whole(v.loop.to) && v.click && typeof v.click.on === "boolean" && whole(v.click.volume) && v.click.volume <= 100 && Number.isFinite(v.delay) && typeof v.others === "boolean")) throw new Error(text);
+      Object.assign(set, { loop: { on: v.loop.on, from: v.loop.from, to: v.loop.to }, click: { on: v.click.on, volume: v.click.volume }, delay: v.delay, others: v.others });
     }
   } catch (e) {
     say(`the loop and the click of the last visit are not read: ${e.message}`, true);
+  }
+  // the quality chosen on a visit before, on this page or another of the site's
+  try {
+    const text = stored(QUALITY, "the quality chosen");
+    if (text !== null) {
+      const v = JSON.parse(text);
+      if (typeof v !== "string") throw new Error(text);
+      chosen = v;
+    }
+  } catch (e) {
+    say(`the quality chosen on the last visit is not read: ${e.message}`, true);
   }
   shown();
   fit();
@@ -1763,7 +1964,7 @@ export function boot({ document, window, web, models, welcome = false }) {
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const before = desk.value;
     take(new Uint8Array(await r.arrayBuffer()), FIRST);
-    if (desk.value !== before) say(HELLO);
+    if (desk.value !== before) say(phone ? HELLO_PHONE : HELLO);
   }).catch((e) => say(`${FIRST}: ${e.message}`, true)) : null;
   // the site's model files (site.js): its voices, and what it says of itself
   const files = filesOf({ web, models, fetch: (url, o) => window.fetch(url, o), said: (m) => say(m, true), caches: window.caches });
@@ -1774,30 +1975,42 @@ export function boot({ document, window, web, models, welcome = false }) {
   }).catch((e) => {
     $("s-said").textContent = `no list of the site's voices (${e.message}): each singer keeps the voice its part names`;
   });
-  // the site's sounds: where it has more than one, the panel has the choice of them
+  // the site's qualities: where it has more than one, the panel has the choice of them
   const sounds = Promise.all([import(new URL("routes.js", web).href), files]).then(([R, { site }]) => {
     routes = R.routesOf(site);
-    if (set.route !== null && !routes.includes(set.route)) {
-      say(`this site has no ${set.route} sound, the one chosen on the last visit: its ${routes[0]} is sung by`, true);
-      stop();
-      for (const w of pool) w?.terminate();
-      pool.length = 0;
-      set.route = null;
+    if (chosen !== null && !routes.includes(chosen)) {
+      say(`this site has no ${chosen} quality, the one chosen on the last visit: it sings in ${routes[0]}`, true);
+      chosen = null;
     }
-    $("route").replaceChildren(...routes.map((r) => {
-      const o = make("option", null, SOUNDS[r] ?? r);
-      o.value = r;
-      return o;
+    // the qualities side by side, the one in use lit. Picked with the mouse, the choice gives the
+    // keys back to the roll; picked with the arrows, it keeps them for the next
+    let keyed = false;
+    radios = routes.map((r) => {
+      const input = make("input");
+      Object.assign(input, { type: "radio", name: "quality", value: r });
+      input.addEventListener("keydown", () => { keyed = true; });
+      input.addEventListener("change", () => attempt(() => {
+        if (!keyed) input.blur?.();
+        keyed = false;
+        reroute(r);
+      }));
+      return input;
+    });
+    $("route").replaceChildren(...radios.map((input) => {
+      const label = make("label");
+      label.append(input, make("span", null, input.value));
+      return label;
     }));
-    $("route-row").hidden = routes.length < 2;
+    $("route-row").hidden = $("route-said").hidden = routes.length < 2;
     shown();
+    requalify();
   }).catch((e) => {
-    say(`the site's sounds are not known (${e.message}): there is no choice of them here`, true);
+    say(`the site's qualities are not known (${e.message}): there is no choice of them here`, true);
   });
 
   return {
     get ed() { return ed; },
     desk, view, fields, board, take, save, paint, sing, stop, heardAt, set, place, show, showMixer, score,
-    cursor: () => cursor, playing: () => playing, mix: () => mix, sounds, reroute, routes: () => routes, greeted,
+    cursor: () => cursor, playing: () => playing, mix: () => mix, sounds, reroute, routes: () => routes, quality, chosen: () => chosen, greeted,
   };
 }

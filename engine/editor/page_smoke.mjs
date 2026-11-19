@@ -58,6 +58,7 @@ class El {
   getBoundingClientRect() { return { left: 0, top: 0 }; }
   focus() { const was = document.activeElement; document.activeElement = this; if (was && was !== this) was.fire("blur"); }
   select() {}
+  blur() { this.blurred = (this.blurred ?? 0) + 1; }
   click() { this.fire("click"); }
   showModal() { this.open = true; }
   close() { this.open = false; }
@@ -91,6 +92,7 @@ const window = {
     return { getPropertyValue: (k) => rootProps.get(k) ?? "" };
   },
   devicePixelRatio: 2,
+  navigator: { userAgent: "a desk's browser" },
   requestAnimationFrame: (f) => frames.push(f),
   ResizeObserver: class { constructor(f) { sized.push(f); } observe() {} },
   localStorage: { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) },
@@ -673,28 +675,43 @@ const pickExample = async (file) => {
   check(clear(0.4) && equal(calls.bars.map((b) => b[0]).slice(0, 2), ["1", "2"]), "and every bar has its number where there is room");
 }
 
-// ---- the site's sounds: the choice in the panel, kept, and workers made anew for the one chosen
+// the panel's qualities, and those lit
+const radios = () => $("route").children.map((l) => l.children[0]), lit = () => radios().filter((r) => r.checked).map((r) => r.value);
+// ---- the site's qualities: the choice in the panel, kept for the whole site, and workers made anew for the one chosen
 {
-  const q = (w) => new URL(w.url).searchParams, kept = () => JSON.parse(store.get("lipservice editor: the page 2")).route;
+  const q = (w) => new URL(w.url).searchParams, kept = () => JSON.parse(store.get("lipservice-quality"));
   const sungBy = (w) => w.posted.filter((m) => m.type === "sing").length;
-  const pick = (by) => { $("route").value = by; $("route").fire("change"); };
-  check($("route-row").hidden === false && equal($("route").children.map((o) => o.value), ["hifi", "fast"]) && $("route").value === "hifi" && page.set.route === null && equal(page.routes(), ["hifi", "fast"]), "the site's two sounds are in the panel, its first the one chosen");
-  check(workers.length === 2 && workers.every((w) => new URL(w.url).pathname.endsWith("/singer.js") && q(w).get("web") === WEB && q(w).get("models") === MODELS && q(w).get("route") === null), "each worker is told the site's two places, and no sound: it sings by the site's first");
-  pick("fast");
-  check(!failed() && page.set.route === "fast" && kept() === "fast" && workers.every((w) => w.gone) && !page.playing() && said() === "every singer is sung by the fast sound", "fast chosen while nothing is sung: kept, and the workers let go");
+  const pick = (by, key = false) => {
+    for (const r of radios()) r.checked = r.value === by;
+    const r = radios().find((x) => x.value === by);
+    if (key) r.fire("keydown", { key: "ArrowRight" });
+    r.fire("change");
+    return r;
+  };
+  check($("route-row").hidden === false && /id="route" class="seg" role="radiogroup" aria-labelledby="route-label"/.test(html), "the qualities are a group of radios, named by the label beside them");
+  check(equal(radios().map((r) => [r.type, r.name, r.value]), [["radio", "quality", "hifi"], ["radio", "quality", "fast"]]) && equal($("route").children.map((l) => [l.tagName, l.children[1].textContent]), [["LABEL", "hifi"], ["LABEL", "fast"]]) && equal(lit(), ["hifi"]) && page.chosen() === null && page.quality() === "hifi" && equal(page.routes(), ["hifi", "fast"]), "the site's two qualities are in the panel, its first in use on a desk");
+  check($("route-said").hidden === false && $("route-said").textContent === "Better sound. Fast is about twice as quick." && !store.has("lipservice-quality") && !("route" in JSON.parse(store.get("lipservice editor: the page 2"))), "beside it, why; and nothing kept where nothing was chosen");
+  check(workers.length === 2 && workers.every((w) => new URL(w.url).pathname.endsWith("/singer.js") && q(w).get("web") === WEB && q(w).get("models") === MODELS && q(w).get("route") === "hifi"), "each worker is told the site's two places, and the quality in use");
+  const mouse = pick("fast");
+  check(mouse.blurred === 1 && equal(lit(), ["fast"]), "picked with the mouse: lit, and the keys given back to the roll");
+  check(!failed() && page.chosen() === "fast" && kept() === "fast" && store.get("lipservice-quality") === '"fast"' && workers.every((w) => w.gone) && !page.playing() && said() === "every singer is sung in fast" && $("route-said").textContent === "About twice as quick. Hifi sounds better.", "fast chosen while nothing is sung: kept as the site keeps it, the workers let go, and why said");
   keydown(" ");
   await settle();
   await settle();
   const fast = workers.slice(2);
   check(!failed() && fast.length === 2 && fast.every((w) => q(w).get("route") === "fast" && q(w).get("models") === MODELS && !w.gone) && fast.reduce((a, w) => a + sungBy(w), 0) === 3, "Sing: new workers asked for the fast sound sing the three singers");
-  pick("hifi");
+  const keyed = pick("hifi", true);
+  check(!keyed.blurred && equal(lit(), ["hifi"]), "picked with the arrows: lit, and the keys kept for the next");
   await settle();
   await settle();
   const hifi = workers.slice(4);
-  check(!failed() && page.set.route === "hifi" && kept() === "hifi" && fast.every((w) => w.gone) && hifi.length === 2 && hifi.every((w) => q(w).get("route") === "hifi") && hifi.reduce((a, w) => a + sungBy(w), 0) === 3 && page.playing() !== null, "hifi chosen while it sings: the fast workers let go, and every singer sung again by new ones");
+  check(!failed() && page.chosen() === "hifi" && kept() === "hifi" && fast.every((w) => w.gone) && hifi.length === 2 && hifi.every((w) => q(w).get("route") === "hifi") && hifi.reduce((a, w) => a + sungBy(w), 0) === 3 && page.playing() !== null, "hifi chosen while it sings: the fast workers let go, and every singer sung again by new ones");
   let refused = null;
   try { page.reroute("slow"); } catch (e) { refused = e.message; }
-  check(refused === "this site has no slow sound (it has hifi and fast)" && page.set.route === "hifi" && hifi.every((w) => !w.gone), "a sound the site has not is refused by name, and nothing changes");
+  check(refused === "this site has no slow quality (it has hifi and fast)" && page.chosen() === "hifi" && hifi.every((w) => !w.gone), "a quality the site has not is refused by name, and nothing changes");
+  const ran = workers.length;
+  pick("hifi");
+  check(!failed() && page.chosen() === "hifi" && workers.length === ran && hifi.every((w) => !w.gone) && page.playing() !== null, "the quality in use chosen again: the singing goes on as it was");
   keydown(" ");
   await settle();
 }
@@ -707,15 +724,163 @@ const pickExample = async (file) => {
   check(tabEls()[0].children[1].textContent === "Singer 1" && !$("tabs").children.some((c) => JSON.stringify(c.children.map((x) => x.textContent)).includes("9999")), "its tab is the singer's place, not the voice's name in the file");
 }
 
-// ---- a page started with a sound kept from a site that had it, on one that has not; and one
-// started with no word of where the site's files are
+// ---- a page started with a quality chosen on a site that had it, on one that has not; one kept
+// as no quality is; a phone's; and a page started with no word of where the site's files are
 {
-  const key = "lipservice editor: the page 2";
-  store.set(key, JSON.stringify({ ...JSON.parse(store.get(key)), route: "slow" }));
+  const Q = "lipservice-quality", phone = (ua, data) => { window.navigator = { userAgent: ua, ...(data ? { userAgentData: data } : {}) }; };
+  store.set(Q, JSON.stringify("slow"));
   const again = boot({ document, window, web: WEB, models: MODELS });
-  check(again.set.route === "slow", "the sound of the last visit is read");
+  check(again.chosen() === "slow", "the quality chosen on the last visit is read");
   await again.sounds;
-  check(again.set.route === null && JSON.parse(store.get(key)).route === null && $("route").value === "hifi" && failed() && said().startsWith("this site has no slow sound"), "the site has it not: said, and the site's first is the one chosen");
+  check(again.chosen() === null && again.quality() === "hifi" && store.get(Q) === '"slow"' && equal(lit(), ["hifi"]) && failed() && said().startsWith("this site has no slow quality"), "the site has it not: said, its first in use, and what another page keeps left alone");
+  store.set(Q, "fast");
+  const bad = boot({ document, window, web: WEB, models: MODELS });
+  check(bad.chosen() === null && failed() && said() === "the quality chosen on the last visit is not read: " + (() => { try { JSON.parse("fast"); } catch (e) { return e.message; } })(), "a quality kept not as the site keeps it is said, and none taken");
+  store.delete(Q);
+  phone("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)");
+  const hand = boot({ document, window, web: WEB, models: MODELS });
+  check(hand.quality() === null, "a phone's quality waits for the site to say what it has");
+  hand.take(new Uint8Array(readFileSync(here("examples/round.score"))), "round.score");
+  const early = workers.length;
+  hand.sing(0);
+  const first = workers.slice(early);
+  check(first.length > 0 && first.every((w) => new URL(w.url).searchParams.get("route") === null), "sung before it has said: workers asked for no quality, the site's first");
+  await hand.sounds;
+  await settle();
+  await settle();
+  const then = workers.slice(early + first.length);
+  check(first.every((w) => w.gone) && then.length > 0 && then.every((w) => new URL(w.url).searchParams.get("route") === "fast" && !w.gone) && hand.playing() !== null, "once it has, the phone's fast: those let go, and the score sung again by new ones");
+  hand.stop();
+  // a phone's page: its roll is not drawn on, and the words go to every singer who sings them, sung at once
+  check(document.documentElement.className === "phone", "a phone's page is dressed as one (html.phone)");
+  const notes = hand.ed.part.notes.length, before = workers.length;
+  {
+    const tap = (px, py) => {
+      for (const kind of ["down", "up"]) $("canvas").on[`pointer${kind}`].at(-1)({ clientX: px, clientY: py, pointerId: 5, type: `pointer${kind}`, button: 0 });
+    };
+    const n = hand.ed.part.notes[2], v = hand.view, c0 = hand.cursor();
+    tap(56 + v.x(n.at) + 3, 30 + v.y(P.key(n.pitch)) + v.tall / 2);
+    check(hand.ed.part.notes.length === notes && hand.cursor() === c0 && hand.ed.selected.has(n) && hand.ed.selected.size === 1 && said() === "hold the note to drag it", "a tap on a note chooses it, and leaves where singing starts");
+    tap(300, 15);
+    check(hand.ed.part.notes.length === notes && hand.cursor() > 0 && hand.cursor() !== c0, "a tap on the ruler sets where singing starts and adds no note");
+  }
+  // a note held still is taken hold of: dragged up two keys, and sung from a beat before it when let go
+  {
+    const n = hand.ed.part.notes[3], k = P.key(n.pitch), v = hand.view, keys = () => hand.ed.part.notes.map((m) => m.pitch);
+    const spot = () => [56 + v.x(n.at) + 3, 30 + v.y(k) + v.tall / 2]; // GUT, RULER
+    const finger = (kind, px, py) => $("canvas").on[`pointer${kind}`].at(-1)({ clientX: px, clientY: py, pointerId: 7, type: `pointer${kind}`, button: 0 });
+    hand.stop();
+    const was = keys(), top0 = v.top;
+    let [x, y] = spot();
+    finger("down", x, y);
+    finger("move", x, y + 40);
+    finger("up", x, y + 40);
+    check(equal(keys(), was) && v.top !== top0 && !hand.playing(), "a finger that moves at once moves the roll, not the note");
+    [x, y] = spot();
+    const top = v.top;
+    finger("down", x, y);
+    await new Promise((r) => setTimeout(r, 400));
+    check(said() === "drag to move the note" && hand.ed.selected.has(hand.ed.part.notes[3]), "held still, the note is taken hold of and chosen");
+    finger("move", x, y - 2 * v.tall);
+    finger("up", x, y - 2 * v.tall);
+    await settle();
+    const m = hand.ed.part.notes.find((q) => q.at === n.at && q.lyric === n.lyric);
+    check(m && P.key(m.pitch) === k + 2 && v.top === top && hand.playing() !== null && hand.playing().start === Math.max(0, n.at - hand.ed.part.grid), "dragged up two keys, the roll still; let go, sung from a beat before it");
+    hand.stop();
+    document.on.keydown.at(-1)({ key: "z", metaKey: true, target: $("canvas"), preventDefault() {} });
+    check(equal(keys(), was), "and undone as any change is");
+    // a finger a little off the note still takes hold of it
+    [x, y] = spot();
+    x = 56 + v.x(n.at) + (n.ticks * v.wide) / 2; // its middle, away from the notes beside it
+    finger("down", x, y + v.tall / 2 + 10);
+    await new Promise((r) => setTimeout(r, 400));
+    const near = said() === "drag to move the note" && hand.ed.selected.has(hand.ed.part.notes[3]);
+    $("canvas").on.pointercancel.at(-1)({ clientX: x, clientY: y, pointerId: 7, type: "pointercancel" });
+    check(near, "a finger held 10 pixels under the note takes hold of it");
+    // another singer's note, held, is taken hold of, and its tab shown
+    const rect = (n) => { const x0 = 56 + v.x(n.at); return { x0, x1: x0 + n.ticks * v.wide, mid: 30 + v.y(P.key(n.pitch)) + v.tall / 2 }; };
+    const finn = hand.desk.value.rows[0].ed.part.notes.map(rect);
+    const cora = hand.desk.value.rows[1].ed.part.notes.find((q) => {
+      const c = rect(q);
+      return c.x0 > 60 && c.x1 < 1100 && c.mid > 40 && c.mid < 500 && finn.every((f) => f.x1 < c.x0 - 40 || f.x0 > c.x1 + 40 || Math.abs(f.mid - c.mid) > 40);
+    });
+    check(cora !== undefined, "the round has a note of Cora's in view with none of Finn's near it");
+    const c = rect(cora);
+    finger("down", (c.x0 + c.x1) / 2 - 4, c.mid);
+    await new Promise((r) => setTimeout(r, 400));
+    const theirs = hand.ed === hand.desk.value.rows[1].ed && hand.ed.selected.has(cora) && tabEls()[1].getAttribute("aria-selected") === "true";
+    $("canvas").on.pointercancel.at(-1)({ clientX: c.x0, clientY: c.mid, pointerId: 7, type: "pointercancel" });
+    check(theirs, "held on Cora's note: hers is taken hold of, and her tab shown");
+    // nothing near: said so
+    const all = hand.desk.value.rows.flatMap((r) => r.ed.part.notes.map(rect));
+    const empty = [...Array(40).keys()].map((j) => [300, 36 + j * 6]).find(([px, py]) => all.every((f) => Math.hypot(px < f.x0 ? f.x0 - px : px > f.x1 ? px - f.x1 : 0, Math.abs(py - f.mid)) > 40));
+    check(empty !== undefined, "the roll has a spot with no note near it");
+    finger("down", ...empty);
+    await new Promise((r) => setTimeout(r, 400));
+    const none = said();
+    $("canvas").on.pointercancel.at(-1)({ clientX: empty[0], clientY: empty[1], pointerId: 7, type: "pointercancel" });
+    check(none === "no note there to take hold of: hold a finger on one", "held where no note is near, said so");
+    // two fingers: apart up and down, the keys taller; apart sideways, the time wider
+    const pf = (kind, id, px, py) => $("canvas").on[`pointer${kind}`].at(-1)({ clientX: px, clientY: py, pointerId: id, type: `pointer${kind}`, button: 0 });
+    const [tall0, wide0] = [v.tall, v.wide];
+    pf("down", 21, 400, 200);
+    pf("down", 22, 400, 260);
+    pf("move", 22, 400, 320);
+    check(v.tall > tall0 * 1.9 && v.wide === wide0, "pinched apart up and down: the keys about twice as tall, the time as it was");
+    pf("move", 22, 520, 320);
+    check(v.wide > wide0 * 2 && v.tall > tall0 * 1.9, "then apart sideways: the time wider too");
+    pf("up", 22, 520, 320);
+    pf("up", 21, 400, 200);
+    check(hand.ed.part.notes.length === notes && !hand.playing(), "a pinch changes no note and sings nothing");
+    hand.show(0);
+  }
+  // the elements are every page's booted here, so this page's own listeners are called: the last added
+  const own = (id, kind) => $(id).on[kind].at(-1)({ type: kind, target: $(id), preventDefault() {} });
+  $("words-all").checked = /id="words-all" type="checkbox" checked/.test(html); // as index.html starts it
+  const mine = hand.ed.part.notes.map((n) => n.lyric), others = hand.desk.value.rows.slice(1).map((r) => r.ed.part.notes.map((n) => n.lyric));
+  check($("words-all-row").hidden === false && $("words-all").checked && $("words-count").textContent === `${notes} syllables for ${notes} notes`, "the round's singers sing the same words: the choice to give them all the new ones, and the words counted");
+  $("words").value = Array(notes).fill("la").join(" ");
+  own("words", "input");
+  check($("words-count").textContent === `${notes} syllables for ${notes} notes`, "the count follows what is typed");
+  own("words-apply", "click");
+  await settle();
+  check(!failed() && hand.desk.value.rows.every((r) => r.ed.part.notes.every((n) => n.lyric === "la")) && hand.playing() !== null && hand.playing().start === 0, "Use these words: every singer sings them, from the start, at once");
+  // one button sings and stops: its listener is this page's, the one before the focus listeners added after it
+  const singer = () => $("sing").on.click.at(-2)({ type: "click", target: $("sing") });
+  draw();
+  check($("sing").textContent === "Stop" && !/id="stop"[^>]*class="[^"]*hand/.test(html), "while it sounds, the phone's Sing button reads Stop");
+  singer();
+  draw();
+  check(hand.playing() === null && said() === "stopped" && $("sing").textContent === "Sing", "pressed, it stops, and reads Sing again");
+  singer();
+  draw();
+  check(hand.playing() !== null && $("sing").textContent === "Stop", "pressed again, it sings");
+  hand.stop();
+  draw();
+  document.on.keydown.at(-1)({ key: "z", metaKey: true, target: $("canvas"), preventDefault() {} }); // cmd Z, to this page
+  check(equal(hand.ed.part.notes.map((n) => n.lyric), mine) && equal(hand.desk.value.rows.slice(1).map((r) => r.ed.part.notes.map((n) => n.lyric)), others), "one undo takes them back from every singer");
+  $("words-all").checked = false;
+  $("words").value = Array(notes).fill("da").join(" ");
+  own("words-apply", "click");
+  check(hand.ed.part.notes.every((n) => n.lyric === "da") && equal(hand.desk.value.rows.slice(1).map((r) => r.ed.part.notes.map((n) => n.lyric)), others), "without it, this singer's alone");
+  $("words").value = Array(notes + 2).fill("da").join(" ");
+  own("words", "input");
+  own("words-apply", "click");
+  check($("words-count").textContent.endsWith(": too many") && $("words-said").textContent === `${notes + 2} syllables for the ${notes} notes`, "too many syllables: said as they are typed, and refused");
+  check($("words").value === Array(notes + 2).fill("da").join(" ") && hand.ed.part.notes.every((n) => n.lyric === "da"), "and what was typed stays in the box to be cut, the notes as they were");
+  hand.stop();
+  $("words-all").checked = true;
+  check(hand.chosen() === null && hand.quality() === "fast" && equal(lit(), ["fast"]) && $("route-said").textContent === "Fast on phones, so singing keeps up. Hifi sounds better." && !store.has(Q), "a phone with nothing chosen: fast, why said, and nothing kept");
+  store.set(Q, JSON.stringify("hifi"));
+  const picked = boot({ document, window, web: WEB, models: MODELS });
+  await picked.sounds;
+  check(picked.quality() === "hifi" && $("route-said").textContent === "Better sound. Fast is about twice as quick.", "a phone's visitor who chose hifi gets hifi");
+  store.delete(Q);
+  phone("Mozilla/5.0 (Linux; Android 15) Mobile", { mobile: false });
+  const said_ = boot({ document, window, web: WEB, models: MODELS });
+  await said_.sounds;
+  check(said_.quality() === "hifi", "a browser that says it is not a phone is taken at its word");
+  phone("a desk's browser");
   let refused = null;
   try { boot({ document, window, web: WEB }); } catch (e) { refused = e.message; }
   check(refused === "boot: models is a folder's address, ending in /, not undefined", "a page not told where the models are does not start");

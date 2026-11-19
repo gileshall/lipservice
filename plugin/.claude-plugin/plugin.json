@@ -1,7 +1,7 @@
 {
   "name": "lipservice",
   "displayName": "Lip Service",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Gives Claude a voice: text said aloud and written scores sung, in sixteen English voices, on this machine's own CPU",
   "author": {"name": "Giles Hall"},
   "homepage": "https://lipservice.dev",

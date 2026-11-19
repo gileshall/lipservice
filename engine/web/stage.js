@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Giles Hall
 
-// The stage from above: the singers on risers in an arc facing the listener (the dot at the
-// bottom), each where its seat puts it (choir.js makeSeats: its row, and the angle its pan comes
-// from), lit as loud as it sings at the speaker and puffing as it takes a breath. Behind them the
+// The stage from above, cropped to its singers: the singers on risers in an arc facing the
+// listener (below, out of frame), each where its seat puts it (choir.js makeSeats: its row, and the
+// angle its pan comes from), lit as loud as it sings at the speaker and puffing as it takes a breath. Behind them the
 // hall glows as it rings. A tap on a singer shows how it sings (its info()) and draws its sound's
 // three ways to the listener: straight, and off the two walls that make its early reflections.
 // Where the stage's singers can be heard alone (alone, tap), a tap asks for that too: the others
@@ -13,20 +13,26 @@ import { HOP } from "./take.js";
 import { colours, fit, hsl } from "./paint.js";
 
 const HALF = 52; // degrees either side, as makeSeats
-const GLOW = 1.25; // the hall's glow reaches this many times the back row's radius: the furthest thing drawn
+const GLOW = 1.25; // the hall's glow reaches this many times the back row's radius
 const ARC = 1.2; // rad either side of straight ahead the glow spans
 const WALL = 1.12; // the walls a tapped singer's reflections come off, in radii
 const EDGE = 4; // px kept clear at the canvas's edges
 const DOT = 10; // px, the largest a singer is drawn
 const REACH = 3.2; // a singer's light and breath reach this many times its size from its seat
+const RMAX = 304; // px, the back row's radius at the most
 
-// The stage on a canvas w px wide: the canvas's height h, the listener at (cx, cy) and the back
-// row's radius R, the largest that keeps the glow, the back row's breaths and the walls inside it.
-export function layout(w) {
-  const h = Math.round(Math.min(400, Math.max(220, w * 0.56)));
-  const cx = w / 2, cy = h - 16;
-  const R = Math.min((cy - EDGE) / GLOW, (cx - EDGE) / (GLOW * Math.sin(ARC)), cy - EDGE - DOT * REACH);
-  return { h, cx, cy, R };
+// A row's radius on a stage of `rows` whose back row's is R.
+const radius = (row, rows, R) => (rows > 1 ? R * (0.58 + (0.42 * row) / (rows - 1)) : R * 0.82);
+
+// The stage of `rows` on a canvas w px wide: the back row's radius R, the largest up to RMAX that
+// keeps the glow inside its width; the listener at (cx, cy), below the canvas, which takes from
+// the glow's rise behind the back row down to the light of the front row's ends.
+export function layout(w, rows = 1) {
+  const ch = Math.cos((HALF * Math.PI) / 180);
+  const cx = w / 2, back = radius(rows - 1, rows, 1), front = radius(0, rows, 1);
+  const R = Math.min(RMAX, (cx - EDGE) / (GLOW * Math.sin(ARC)));
+  const cy = EDGE + Math.max(back * R + DOT * REACH, R);
+  return { h: Math.round(cy - front * R * ch + DOT * REACH + EDGE), cx, cy, R };
 }
 
 export class Stage {
@@ -83,17 +89,17 @@ export class Stage {
   place(seat, rows, panMax, cx, cy, R) {
     const sh = Math.sin((HALF * Math.PI) / 180);
     const a = Math.asin(Math.max(-1, Math.min(1, (seat.pan * sh) / panMax)));
-    const r = rows > 1 ? R * (0.58 + (0.42 * seat.row) / (rows - 1)) : R * 0.82;
+    const r = radius(seat.row, rows, R);
     return [cx + r * Math.sin(a), cy - r * Math.cos(a), r, a];
   }
 
   // at sample `ph`; hall: the hall's power there (room trace), or null
   draw(ph, hall = null) {
-    const s = this.s, { h, cx, cy, R } = layout(this.cv.clientWidth);
+    const s = this.s, rows = s ? Math.max(...s.seats.map((x) => x.row)) + 1 : 1;
+    const { h, cx, cy, R } = layout(this.cv.clientWidth, rows);
     const g = fit(this.cv, h), c = colours();
     g.clearRect(0, 0, g.w, g.h);
     if (!s) return;
-    const rows = Math.max(...s.seats.map((x) => x.row)) + 1;
     // the hall, a glow behind the back row as it rings
     if (hall !== null && hall > 0) {
       this.hall = Math.max(this.hall * 0.9995, hall);
@@ -113,21 +119,22 @@ export class Stage {
     g.lineWidth = 1;
     const a0 = (HALF * Math.PI) / 180 + 0.08;
     for (let r = 0; r < rows; r++) {
-      const rr = rows > 1 ? R * (0.58 + (0.42 * r) / (rows - 1)) : R * 0.82;
       g.beginPath();
-      g.arc(cx, cy, rr, -Math.PI / 2 - a0, -Math.PI / 2 + a0);
+      g.arc(cx, cy, radius(r, rows, R), -Math.PI / 2 - a0, -Math.PI / 2 + a0);
       g.stroke();
     }
-    // the listener
-    g.fillStyle = c.mute;
-    g.beginPath(); g.arc(cx, cy, 4, 0, 2 * Math.PI); g.fill();
     const f = Math.floor(ph / HOP);
-    const perRow = s.seats.length / rows, size = Math.max(3, Math.min(DOT, ((R * 0.7 * 2 * a0) / perRow) * 0.36));
+    // as large as DOT, but under half the way to the nearest other singer
+    const at = s.singers.map((p) => this.place(s.seats[p.seat], rows, s.panMax, cx, cy, R));
+    let near = Infinity;
+    for (let i = 0; i < at.length; i++) for (let j = i + 1; j < at.length; j++) near = Math.min(near, Math.hypot(at[i][0] - at[j][0], at[i][1] - at[j][1]));
+    const size = Math.max(3, Math.min(DOT, 0.45 * near));
+    this.size = size;
     const alone = s.alone?.() ?? null, some = alone !== null && alone.size > 0;
     this.placed = [];
     let peak = 0;
     for (const [i, p] of s.singers.entries()) {
-      const [x, y] = this.place(s.seats[p.seat], rows, s.panMax, cx, cy, R);
+      const [x, y] = at[i];
       const on = p.on(ph), heard = on && (!some || alone.has(i));
       this.placed.push({ i, x, y, on });
       const lv = heard ? p.level(f) : NaN, hu = typeof p.hue === "function" ? p.hue(ph) : p.hue;
@@ -172,7 +179,7 @@ export class Stage {
       g.globalAlpha = 0.8;
       g.font = "600 28px system-ui, sans-serif";
       g.textAlign = "center";
-      g.fillText(centre, cx, cy - R * 0.3);
+      g.fillText(centre, cx, g.h - EDGE - 6);
       g.textAlign = "left";
       g.globalAlpha = 1;
     }
@@ -196,7 +203,7 @@ export class Stage {
       g.globalAlpha = 1;
       g.fillStyle = c.made;
       const text = `${Math.round(rf.delayMs)} ms`, tw = g.measureText(text).width;
-      g.fillText(text, Math.max(EDGE, Math.min(g.w - EDGE - tw, wx < cx ? wx - tw - 4 : wx + 4)), Math.max(EDGE + 8, wy));
+      g.fillText(text, Math.max(EDGE, Math.min(g.w - EDGE - tw, wx < cx ? wx - tw - 4 : wx + 4)), Math.min(g.h - EDGE, Math.max(EDGE + 8, wy)));
     }
     g.setLineDash([]);
   }

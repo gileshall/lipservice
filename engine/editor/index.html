@@ -26,7 +26,7 @@
   <button id="loop" aria-pressed="false" title="Loop the stretch marked in the ruler (O)">Loop</button>
   <button id="click" aria-pressed="false" title="Metronome: a click on each beat (K)">Click</button>
   <span id="click-volume"></span>
-  <label>tempo</label><span id="tempo"></span>
+  <label class="tempo-label">tempo</label><span id="tempo"></span>
   <span class="gap"></span>
   <button id="undo">Undo</button>
   <button id="redo">Redo</button>
@@ -49,8 +49,8 @@
 </div>
 <section id="mixer" hidden></section>
 <aside id="side">
-  <h2>Note</h2>
-  <div class="rows">
+  <h2 class="desk">Note</h2>
+  <div class="rows desk">
     <label title="The beat the note starts on">start</label><span id="n-at"></span>
     <label title="How long the note is, in beats">beats</label><span id="n-beats"></span>
     <label title="The note's name, like C4, with cents where it is off: E4+14">pitch</label><span id="n-pitch"></span>
@@ -58,8 +58,9 @@
     <label title="How fast the key was let go, 0 to 127. Kept in the file and in MIDI; the singer does not use it yet">release</label><span id="n-release"></span>
     <label for="n-lyric" title="What is sung on the note. End it with - when the word goes on: Ma- ry. Use _ to hold the syllable before.">syllable</label><input id="n-lyric">
   </div>
-  <div id="n-said" class="said"></div>
+  <div id="n-said" class="said desk"></div>
 
+  <div id="singer-part">
   <h2>Singer</h2>
   <div class="rows">
     <label for="s-voice">voice</label><select id="s-voice" class="wide"></select>
@@ -78,29 +79,37 @@
     <label for="s-diction" title="Sung diction: every vowel is stressed">diction</label><input id="s-diction" type="checkbox">
   </div>
   <div id="s-said" class="said"></div>
+  </div>
 
+  <div id="sound-part">
   <h2>Sound</h2>
   <div class="rows" id="route-row" hidden>
-    <label for="route">sound</label><select id="route" class="wide" title="Which engine sings every singer: hifi is the fullest sound, fast is quicker to make"></select>
+    <span id="route-label" class="label" title="Hifi sounds better; fast is about twice as quick. The choice is kept for the whole site">quality</span><span id="route" class="seg" role="radiogroup" aria-labelledby="route-label" aria-describedby="route-said"></span>
   </div>
-  <div class="rows">
+  <div id="route-said" class="said" hidden></div>
+  <div class="rows desk">
     <label title="Milliseconds added to the delay the browser reports for its speaker">speaker late</label><span id="delay"></span>
   </div>
-  <div class="said">If the moving line and the sound are out of step, change this.</div>
-  <div id="delay-said" class="said"></div>
+  <div class="said desk">If the moving line and the sound are out of step, change this.</div>
+  <div id="delay-said" class="said desk"></div>
+  </div>
 
+  <div id="words-part">
   <h2>Words</h2>
   <textarea id="words" spellcheck="false" aria-label="the words, a syllable a note from the first"></textarea>
-  <button id="words-apply" title="One syllable goes under each note, from the first note on. Split a word with -: lit-tle">Put these words under the notes</button>
+  <div id="words-count" class="said"></div>
+  <label id="words-all-row" class="check" hidden title="The other singers who sing the same words get these too"><input id="words-all" type="checkbox" checked> every singer with these words</label>
+  <button id="words-apply" title="One syllable goes under each note, from the first note on. Split a word with -: lit-tle"><span class="desk">Put these words under the notes</span><span class="hand">Use these words</span></button>
   <div id="words-said" class="said"></div>
+  </div>
 
-  <h2>The part as text</h2>
-  <textarea id="text" spellcheck="false" aria-label="the part as text"></textarea>
-  <button id="text-apply" title="Replace this singer's part with the text above">Load this text</button>
-  <div id="text-said" class="said"></div>
+  <h2 class="desk">The part as text</h2>
+  <textarea id="text" class="desk" spellcheck="false" aria-label="the part as text"></textarea>
+  <button id="text-apply" class="desk" title="Replace this singer's part with the text above">Load this text</button>
+  <div id="text-said" class="said desk"></div>
 
-  <h2>Keys</h2>
-  <div id="keys">
+  <h2 class="desk">Keys</h2>
+  <div id="keys" class="desk">
     The editor needs a mouse and a keyboard. It does not work by touch.<br>
     <kbd>double click</kbd> an empty spot to add a note<br>
     <kbd>drag</kbd> a note to move it; drag its right end to change its length<br>

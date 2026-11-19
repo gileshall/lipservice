@@ -115,6 +115,14 @@ aside h2:first-child { margin-top: 2px; }
 .rows label { color: var(--dim); }
 .rows input, .rows select { width: 100%; min-width: 0; }
 .rows input[type="checkbox"] { width: auto; justify-self: start; }
+.rows .label { color: var(--dim); }
+/* a choice of two or more side by side, the one in use lit (the quality) */
+.seg { grid-column: 2 / 5; justify-self: start; display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 2px; }
+.rows .seg label { position: relative; padding: 2px 12px; border-radius: 999px; cursor: pointer; color: var(--dim); }
+.rows .seg label:hover { color: var(--ink); }
+.rows .seg input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; opacity: 0; cursor: pointer; }
+.rows .seg label:has(input:checked) { background: #3b4860; color: var(--ink); }
+.rows .seg label:has(input:focus-visible) { outline: 2px solid #5a6f96; outline-offset: 1px; }
 textarea { width: 100%; resize: vertical; font: 12px/1.4 ui-monospace, Menlo, monospace; white-space: pre; tab-size: 2; }
 #text { height: 16em; }
 #words { height: 7em; white-space: pre-wrap; }
@@ -127,3 +135,42 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
 dialog button { display: block; width: 100%; text-align: left; margin: 4px 0; }
 kbd { font: 11px ui-monospace, Menlo, monospace; background: #252a33; border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; }
 #keys { color: var(--dim); line-height: 1.9; }
+
+/* the words: their count, and whether they go to every singer who sings the same */
+.check { display: block; margin: 4px 0; color: var(--dim); }
+.check input { vertical-align: -2px; margin: 0 4px 0 0; }
+#words-apply { margin-top: 2px; }
+.hand { display: none; }
+
+/* a phone (page.js sets html.phone): the roll above, the panel below it, and only what a phone
+   does: sing, watch, choose the voices and the quality, and change the words */
+html.phone, html.phone body { height: 100dvh; }
+html.phone { font-size: 15px; }
+html.phone body { grid-template: auto auto minmax(170px, 40dvh) 1fr auto / minmax(0, 1fr); }
+html.phone header, html.phone #tabs, html.phone #roll, html.phone aside, html.phone footer { grid-column: 1; }
+html.phone #roll { grid-row: 3; }
+html.phone aside { grid-row: 4; width: auto; border-left: 0; border-top: 1px solid var(--line); padding: 4px 12px 16px; }
+html.phone aside[hidden] { display: block; }
+html.phone footer { grid-row: 5; max-height: 7.2em; font-size: 13px; }
+html.phone .desk, html.phone header > *, html.phone .tab.mixer, html.phone .tab.plain { display: none; }
+html.phone .hand { display: inline; }
+html.phone header { gap: 8px; }
+html.phone header > :is(#sing, #examples, #tempo, #undo, #fit) { display: inline-flex; align-items: center; }
+html.phone :is(button, select, .pull) { min-height: 38px; touch-action: manipulation; }
+html.phone :is(input, select, textarea) { font-size: 16px; }
+html.phone #sing { order: -1; min-width: 5.5em; justify-content: center; padding: 0 20px; font-weight: 600; background: #3b4860; border-color: #5a6f96; }
+html.phone #examples { flex: 1 1 8em; width: auto; min-width: 0; }
+html.phone .tab { height: 34px; }
+html.phone .rows { grid-template-columns: auto minmax(0, 1fr); }
+html.phone .rows .wide, html.phone .seg { grid-column: 2; }
+html.phone #side .rows > * { display: none; }
+html.phone #side .rows > :is(label[for="s-voice"], #s-voice, label:has(+ #s-shift), #s-shift, #route-label, #route) { display: inline-flex; align-items: center; }
+html.phone #side .rows > :is(#s-voice, #s-shift) { width: 100%; }
+html.phone .rows .seg label { padding: 7px 18px; }
+html.phone #words { height: 6.5em; white-space: pre-wrap; }
+html.phone #words-apply { display: block; width: 100%; font-weight: 600; }
+html.phone .check { padding: 6px 0; }
+html.phone aside { display: flex; flex-direction: column; }
+html.phone #words-part { order: -1; }
+html.phone .tab .x { display: none; }
+html.phone #canvas { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }

@@ -2,7 +2,7 @@
   "$schema": "https://antigravity.google/schemas/v1/plugin.json",
   "name": "lipservice",
   "displayName": "Lip Service",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Gives a model a voice: text said aloud and written scores sung, in sixteen English voices, on this machine's own CPU",
   "logo": "assets/icon.svg",
   "suggestedPrompts": [

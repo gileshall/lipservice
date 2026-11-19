@@ -812,7 +812,8 @@ impl<'m> Stream<'m> {
         }
     }
 
-    /// Lets in up to n more frames of the score and appends the audio they finish to `out`.
+    /// Lets in up to n more frames of the score and appends the audio they finish to `out`; the
+    /// latent voice's, n frames of it at most.
     pub fn step(&mut self, n: usize, out: &mut Vec<f32>) {
         let a = out.len();
         self.front.advance(n);
@@ -824,7 +825,9 @@ impl<'m> Stream<'m> {
                 let told = if fr.told.is_empty() { &fr.lf0[a..] } else { &fr.told[a..fr.lf0.len()] };
                 t.feed_told(&fr.lf0[a..], told, &fr.vuv[a..]);
                 fr.trim_hx(usize::MAX);
-                out.extend(t.next(usize::MAX));
+                // n frames a step: the pitch's end lets the rest in at once, and made at once it
+                // would hold back all of it
+                out.extend(t.next(n));
             }
         }
         let k = self.skip.min(out.len() - a);

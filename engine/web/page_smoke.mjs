@@ -326,12 +326,12 @@ if (key[0].who.length === singers) fail("the stage's key has one part: no part t
 key[0].onclick({});
 step(await changed("a part is heard alone as it plays"));
 if (voicesOf() !== `${key[0].who.length} of ${singers}`) fail(`a part alone: the page says "${said.at(-1)[0]}"`);
-const seats = makeSeats(singers, piece.pan), last = singers - 1, { cx, cy, R } = layout($("stage").clientWidth);
+const seats = makeSeats(singers, piece.pan), last = singers - 1, rows = Math.max(...seats.map((x) => x.row)) + 1, { cx, cy, R } = layout($("stage").clientWidth, rows);
 const [sx, sy] = Stage.prototype.place(seats[piece.parts[last].seat ?? last], Math.max(...seats.map((x) => x.row)) + 1, Math.max(...seats.map((x) => Math.abs(x.pan)), 1e-3), cx, cy, R);
 $("stage").fire("pointerdown", { clientX: sx, clientY: sy });
 step(await changed("a click on a singer has that one alone"));
 if (voicesOf() !== `1 of ${singers}` || $("stage-card").hidden) fail(`a singer alone: the page says "${said.at(-1)[0]}", its card ${$("stage-card").hidden ? "hidden" : "shown"}`);
-$("stage").fire("pointerdown", { clientX: cx, clientY: cy });
+$("stage").fire("pointerdown", { clientX: 4, clientY: 4 }); // the empty stage, its top left corner
 step(await changed("a click on the empty stage brings the choir back"));
 if (voicesOf() !== `${singers}` || !$("stage-card").hidden) fail(`the choir back: the page says "${said.at(-1)[0]}"`);
 click(0.1);
