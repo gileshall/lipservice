@@ -6,7 +6,7 @@
     {
       "name": "lipservice",
       "source": "./plugin",
-      "description": "Gives Claude a voice: text said aloud and written scores sung, in eight English voices, on this machine's own CPU"
+      "description": "Gives Claude a voice: text said aloud and written scores sung, in sixteen English voices, on this machine's own CPU"
     }
   ]
 }
