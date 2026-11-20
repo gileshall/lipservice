@@ -1,8 +1,9 @@
 {
   "mcpServers": {
     "lipservice": {
-      "command": "lipservice",
+      "command": "uvx",
       "args": [
+        "lipservice@0.1.1",
         "mcp"
       ]
     }

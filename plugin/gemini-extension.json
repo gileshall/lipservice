@@ -4,8 +4,9 @@
   "description": "Gives a model a voice: text said aloud and written scores sung, in sixteen English voices, on this machine's own CPU",
   "mcpServers": {
     "lipservice": {
-      "command": "lipservice",
+      "command": "uvx",
       "args": [
+        "lipservice@0.1.1",
         "mcp"
       ]
     }
