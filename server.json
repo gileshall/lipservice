@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "dev.lipservice/lipservice",
   "title": "Lip Service",
-  "description": "Speech, singing and choirs made on your own CPU: sixteen English voices, played aloud or written as WAV.",
+  "description": "Speech, singing and choirs made on your own CPU: sixteen English voices, played or written as WAV.",
   "version": "0.2.0",
   "websiteUrl": "https://lipservice.dev",
   "packages": [
