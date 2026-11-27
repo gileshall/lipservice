@@ -27,6 +27,161 @@ const XG: usize = 16;
 #[cfg(not(target_arch = "wasm32"))]
 const XG: usize = 4;
 
+/// Whether this machine runs kernels made for it. Without them the plain loops, the same bits, many
+/// times slower.
+fn kernels() -> bool {
+    #[cfg(any(target_arch = "aarch64", target_arch = "wasm32"))]
+    return true;
+    #[cfg(target_arch = "x86_64")]
+    return x86::has();
+    #[cfg(not(any(target_arch = "aarch64", target_arch = "wasm32", target_arch = "x86_64")))]
+    false
+}
+
+/// What a machine with or without kernels does, given LIPSERVICE_ACCEL: nothing, a warning to give, or
+/// a refusal.
+fn accel_for(kernels: bool, asked: Option<&str>) -> std::result::Result<Option<String>, String> {
+    let lacks = if cfg!(target_arch = "x86_64") { "this processor has no AVX2 and FMA".to_string() } else { format!("the engine has no kernels for {}", std::env::consts::ARCH) };
+    match (asked, kernels) {
+        (Some("require"), false) => Err(format!("LIPSERVICE_ACCEL=require: {lacks}, and the plain loops are refused")),
+        (None | Some("require"), true) => Ok(None),
+        (None, false) => Ok(Some(format!("lipservice: WARNING: {lacks}: running the plain loops, about ten times slower. LIPSERVICE_ACCEL=require stops instead."))),
+        (Some(x), _) => Err(format!("LIPSERVICE_ACCEL={x}: require, or unset")),
+    }
+}
+
+/// Asked before any model is read: warns once on stderr of the plain loops, or refuses them when
+/// LIPSERVICE_ACCEL=require.
+pub fn accel() -> Result<()> {
+    static ONCE: std::sync::OnceLock<std::result::Result<(), String>> = std::sync::OnceLock::new();
+    ONCE.get_or_init(|| {
+        let asked = match std::env::var("LIPSERVICE_ACCEL") {
+            Ok(x) => Some(x),
+            Err(std::env::VarError::NotPresent) => None,
+            Err(e) => return Err(format!("LIPSERVICE_ACCEL: {e}")),
+        };
+        if let Some(warning) = accel_for(kernels(), asked.as_deref())? {
+            eprintln!("{warning}");
+        }
+        Ok(())
+    })
+    .clone()
+    .or_else(err)
+}
+
+/// The kernels for x86-64 with AVX2 and FMA, found as the engine runs; without them the plain loops,
+/// the same bits.
+#[cfg(target_arch = "x86_64")]
+mod x86 {
+    use super::{CB, RB, XP};
+    use std::arch::x86_64::*;
+
+    #[inline(always)]
+    pub fn has() -> bool {
+        std::arch::is_x86_feature_detected!("avx2") && std::arch::is_x86_feature_detected!("fma")
+    }
+
+    /// The plain loop, compiled where rounding and the fused multiply are instructions, not calls.
+    #[target_feature(enable = "avx2,fma")]
+    pub unsafe fn quantize(row: &[f32], out: &mut [i8]) -> f32 {
+        super::quantize_plain(row, out)
+    }
+
+    /// As quantize: the plain loop with the instructions.
+    #[target_feature(enable = "avx2,fma")]
+    pub unsafe fn gelu_slice(x: &mut [f32]) {
+        super::gelu_slice_plain(x)
+    }
+
+    #[target_feature(enable = "avx2,fma")]
+    pub unsafe fn tile(xp: &[f32], panel: &[f32], cin: usize, bias: &[f32; CB], acc: &mut [[f32; CB]; RB]) {
+        assert!(xp.len() >= cin * XP && panel.len() >= cin * CB);
+        let mut a = [[_mm256_loadu_ps(bias.as_ptr()), _mm256_loadu_ps(bias.as_ptr().add(8))]; RB];
+        let (mut px, mut pw) = (xp.as_ptr(), panel.as_ptr());
+        for _ in 0..cin {
+            let (w0, w1) = (_mm256_loadu_ps(pw), _mm256_loadu_ps(pw.add(8)));
+            for r in 0..RB {
+                let x = _mm256_broadcast_ss(&*px.add(r));
+                a[r][0] = _mm256_fmadd_ps(x, w0, a[r][0]);
+                a[r][1] = _mm256_fmadd_ps(x, w1, a[r][1]);
+            }
+            px = px.add(XP);
+            pw = pw.add(CB);
+        }
+        for r in 0..RB {
+            _mm256_storeu_ps(acc[r].as_mut_ptr(), a[r][0]);
+            _mm256_storeu_ps(acc[r].as_mut_ptr().add(8), a[r][1]);
+        }
+    }
+
+    /// The caller checked that each panel holds x.len() * CB and each bias CB.
+    #[target_feature(enable = "avx2,fma")]
+    pub unsafe fn row_tiles<const N: usize>(x: &[f32], panels: [&[f32]; N], bias: [&[f32]; N], acc: &mut [[f32; CB]; N]) {
+        let mut a = [[_mm256_setzero_ps(); 2]; N];
+        for p in 0..N {
+            a[p] = [_mm256_loadu_ps(bias[p].as_ptr()), _mm256_loadu_ps(bias[p].as_ptr().add(8))];
+        }
+        for (i, xv) in x.iter().enumerate() {
+            let x = _mm256_broadcast_ss(xv);
+            for p in 0..N {
+                let pw = panels[p].as_ptr().add(i * CB);
+                a[p][0] = _mm256_fmadd_ps(x, _mm256_loadu_ps(pw), a[p][0]);
+                a[p][1] = _mm256_fmadd_ps(x, _mm256_loadu_ps(pw.add(8)), a[p][1]);
+            }
+        }
+        for p in 0..N {
+            _mm256_storeu_ps(acc[p].as_mut_ptr(), a[p][0]);
+            _mm256_storeu_ps(acc[p].as_mut_ptr().add(8), a[p][1]);
+        }
+    }
+
+    /// Eight outputs' sums of four int8 products: x is one row's four inputs in each 32 bits, never
+    /// -128 (q8 clamps to 127); |w| as unsigned and x signed by w, so no pair leaves 16 bits.
+    #[inline(always)]
+    unsafe fn dot4(aw: __m256i, w: __m256i, x: __m256i) -> __m256i {
+        _mm256_madd_epi16(_mm256_maddubs_epi16(aw, _mm256_sign_epi8(x, w)), _mm256_set1_epi16(1))
+    }
+
+    /// All RB rows, however many are wanted: the rest of xp is zero.
+    #[target_feature(enable = "avx2")]
+    pub unsafe fn tile_i8(xp: &[i8], panel: &[i8], kg: usize, acc: &mut [[i32; CB]; RB]) {
+        assert!(xp.len() >= kg * XP * 4 && panel.len() >= kg * CB * 4);
+        let mut a = [[_mm256_setzero_si256(); 2]; RB];
+        let (mut px, mut pw) = (xp.as_ptr() as *const i32, panel.as_ptr() as *const __m256i);
+        for _ in 0..kg {
+            let (w0, w1) = (_mm256_loadu_si256(pw), _mm256_loadu_si256(pw.add(1)));
+            let (a0, a1) = (_mm256_abs_epi8(w0), _mm256_abs_epi8(w1));
+            for r in 0..RB {
+                let x = _mm256_set1_epi32(px.add(r).read_unaligned());
+                a[r][0] = _mm256_add_epi32(a[r][0], dot4(a0, w0, x));
+                a[r][1] = _mm256_add_epi32(a[r][1], dot4(a1, w1, x));
+            }
+            px = px.add(XP);
+            pw = pw.add(2);
+        }
+        for r in 0..RB {
+            _mm256_storeu_si256(acc[r].as_mut_ptr() as *mut __m256i, a[r][0]);
+            _mm256_storeu_si256(acc[r].as_mut_ptr().add(8) as *mut __m256i, a[r][1]);
+        }
+    }
+
+    #[target_feature(enable = "avx2")]
+    pub unsafe fn row_tile_i8(x: &[i8], panel: &[i8], kg: usize, acc: &mut [i32; CB]) {
+        assert!(x.len() >= kg * 4 && panel.len() >= kg * CB * 4);
+        let mut a = [_mm256_setzero_si256(); 2];
+        let (px, mut pw) = (x.as_ptr() as *const i32, panel.as_ptr() as *const __m256i);
+        for g in 0..kg {
+            let (w0, w1) = (_mm256_loadu_si256(pw), _mm256_loadu_si256(pw.add(1)));
+            let x = _mm256_set1_epi32(px.add(g).read_unaligned());
+            a[0] = _mm256_add_epi32(a[0], dot4(_mm256_abs_epi8(w0), w0, x));
+            a[1] = _mm256_add_epi32(a[1], dot4(_mm256_abs_epi8(w1), w1, x));
+            pw = pw.add(2);
+        }
+        _mm256_storeu_si256(acc.as_mut_ptr() as *mut __m256i, a[0]);
+        _mm256_storeu_si256(acc.as_mut_ptr().add(8) as *mut __m256i, a[1]);
+    }
+}
+
 /// acc = bias + xp^T panel for one RB x CB tile; xp is (cin, XP), panel (cin, CB).
 #[cfg(target_arch = "aarch64")]
 #[inline(always)]
@@ -72,6 +227,17 @@ fn tile(xp: &[f32], panel: &[f32], cin: usize, bias: &[f32; CB], acc: &mut [[f32
 #[cfg(not(any(target_arch = "aarch64", target_arch = "wasm32")))]
 #[inline(always)]
 fn tile(xp: &[f32], panel: &[f32], cin: usize, bias: &[f32; CB], acc: &mut [[f32; CB]; RB]) {
+    #[cfg(target_arch = "x86_64")]
+    if x86::has() {
+        // SAFETY: has() found AVX2 and FMA; the kernel checks its buffer lengths.
+        return unsafe { x86::tile(xp, panel, cin, bias, acc) };
+    }
+    tile_plain(xp, panel, cin, bias, acc)
+}
+
+/// tile for any machine: each sum fused and in tile's order, so the same bits as the kernels.
+#[cfg(not(any(target_arch = "aarch64", target_arch = "wasm32")))]
+fn tile_plain(xp: &[f32], panel: &[f32], cin: usize, bias: &[f32; CB], acc: &mut [[f32; CB]; RB]) {
     *acc = [*bias; RB];
     for i in 0..cin {
         let w: &[f32; CB] = panel[i * CB..(i + 1) * CB].try_into().unwrap();
@@ -87,8 +253,83 @@ fn tile(xp: &[f32], panel: &[f32], cin: usize, bias: &[f32; CB], acc: &mut [[f32
 /// acc = xp^T panel for one RB x CB tile in int8: xp is (kg, XP, 4), panel (kg, CB, 4), both
 /// grouped by four inputs for SDOT; all RB rows, however many are wanted.
 #[cfg(target_arch = "aarch64")]
-#[target_feature(enable = "dotprod")]
+#[inline]
 unsafe fn tile_i8(xp: &[i8], panel: &[i8], kg: usize, _rn: usize, acc: &mut [[i32; CB]; RB]) {
+    if std::arch::is_aarch64_feature_detected!("dotprod") {
+        // SAFETY: the processor has dotprod.
+        return unsafe { tile_i8_dot(xp, panel, kg, acc) };
+    }
+    neon::tile_i8(xp, panel, kg, acc)
+}
+
+/// The int8 kernels for an arm64 processor without SDOT (Cortex-A53, A72): widening multiplies and
+/// pairwise adds, the same sums.
+#[cfg(target_arch = "aarch64")]
+mod neon {
+    use super::{CB, RB, XP};
+    use std::arch::aarch64::*;
+
+    /// Eight outputs' sums of four products each, added to a0 and a1: e and o are the outputs' even
+    /// and odd weights, xe and xo one group's even and odd inputs repeated. Two products fit an i16
+    /// because no input is -128.
+    #[inline(always)]
+    unsafe fn dot8(a0: &mut int32x4_t, a1: &mut int32x4_t, e: int8x16_t, o: int8x16_t, xe: int8x16_t, xo: int8x16_t) {
+        let lo = vmlal_s8(vmull_s8(vget_low_s8(e), vget_low_s8(xe)), vget_low_s8(o), vget_low_s8(xo));
+        let hi = vmlal_high_s8(vmull_high_s8(e, xe), o, xo);
+        *a0 = vpadalq_s16(*a0, lo);
+        *a1 = vpadalq_s16(*a1, hi);
+    }
+
+    pub fn tile_i8(xp: &[i8], panel: &[i8], kg: usize, acc: &mut [[i32; CB]; RB]) {
+        assert!(kg > 0 && xp.len() >= kg * XP * 4 && panel.len() >= kg * CB * 4);
+        // SAFETY: every load stays inside xp and panel (checked above); stores go to acc.
+        unsafe {
+            let mut a = [[vdupq_n_s32(0); 4]; RB];
+            for g in 0..kg {
+                let wp = panel.as_ptr().add(g * CB * 4);
+                let (w0, w1, w2, w3) = (vld1q_s8(wp), vld1q_s8(wp.add(16)), vld1q_s8(wp.add(32)), vld1q_s8(wp.add(48)));
+                let (e0, o0, e1, o1) = (vuzp1q_s8(w0, w1), vuzp2q_s8(w0, w1), vuzp1q_s8(w2, w3), vuzp2q_s8(w2, w3));
+                let xg = xp.as_ptr().add(g * XP * 4);
+                for r in 0..RB {
+                    let x = vreinterpretq_s8_s32(vld1q_dup_s32(xg.add(r * 4) as *const i32));
+                    let (xe, xo) = (vuzp1q_s8(x, x), vuzp2q_s8(x, x));
+                    let [a0, a1, a2, a3] = &mut a[r];
+                    dot8(a0, a1, e0, o0, xe, xo);
+                    dot8(a2, a3, e1, o1, xe, xo);
+                }
+            }
+            for r in 0..RB {
+                for c in 0..4 {
+                    vst1q_s32(acc[r].as_mut_ptr().add(c * 4), a[r][c]);
+                }
+            }
+        }
+    }
+
+    pub fn row_tile_i8(x: &[i8], panel: &[i8], kg: usize, acc: &mut [i32; CB]) {
+        assert!(kg > 0 && x.len() >= kg * 4 && panel.len() >= kg * CB * 4);
+        // SAFETY: as tile_i8.
+        unsafe {
+            let mut a = [vdupq_n_s32(0); 4];
+            for g in 0..kg {
+                let wp = panel.as_ptr().add(g * CB * 4);
+                let (w0, w1, w2, w3) = (vld1q_s8(wp), vld1q_s8(wp.add(16)), vld1q_s8(wp.add(32)), vld1q_s8(wp.add(48)));
+                let xv = vreinterpretq_s8_s32(vld1q_dup_s32(x.as_ptr().add(g * 4) as *const i32));
+                let (xe, xo) = (vuzp1q_s8(xv, xv), vuzp2q_s8(xv, xv));
+                let [a0, a1, a2, a3] = &mut a;
+                dot8(a0, a1, vuzp1q_s8(w0, w1), vuzp2q_s8(w0, w1), xe, xo);
+                dot8(a2, a3, vuzp1q_s8(w2, w3), vuzp2q_s8(w2, w3), xe, xo);
+            }
+            for c in 0..4 {
+                vst1q_s32(acc.as_mut_ptr().add(c * 4), a[c]);
+            }
+        }
+    }
+}
+
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "dotprod")]
+unsafe fn tile_i8_dot(xp: &[i8], panel: &[i8], kg: usize, acc: &mut [[i32; CB]; RB]) {
     assert!(kg > 0 && xp.len() >= kg * XP * 4 && panel.len() >= kg * CB * 4);
     // SAFETY: the loop reads kg groups from each buffer (checked above) and writes acc's 96 i32s.
     std::arch::asm!(
@@ -162,6 +403,16 @@ unsafe fn tile_i8(xp: &[i8], panel: &[i8], kg: usize, _rn: usize, acc: &mut [[i3
 
 #[cfg(not(any(target_arch = "aarch64", target_arch = "wasm32")))]
 unsafe fn tile_i8(xp: &[i8], panel: &[i8], kg: usize, rn: usize, acc: &mut [[i32; CB]; RB]) {
+    #[cfg(target_arch = "x86_64")]
+    if x86::has() {
+        // SAFETY: has() found AVX2; the kernel checks its buffer lengths.
+        return unsafe { x86::tile_i8(xp, panel, kg, acc) };
+    }
+    tile_i8_plain(xp, panel, kg, rn, acc)
+}
+
+#[cfg(not(any(target_arch = "aarch64", target_arch = "wasm32")))]
+fn tile_i8_plain(xp: &[i8], panel: &[i8], kg: usize, rn: usize, acc: &mut [[i32; CB]; RB]) {
     *acc = [[0; CB]; RB];
     for g in 0..kg {
         for r in 0..rn {
@@ -321,6 +572,11 @@ fn row_tiles<const N: usize>(x: &[f32], panels: [&[f32]; N], bias: [&[f32]; N], 
             }
         }
     }
+    #[cfg(target_arch = "x86_64")]
+    if x86::has() {
+        // SAFETY: has() found AVX2 and FMA; loads stay inside x, the panels and the biases (checked above).
+        return unsafe { x86::row_tiles(x, panels, bias, acc) };
+    }
     #[cfg(not(any(target_arch = "aarch64", target_arch = "wasm32")))]
     for p in 0..N {
         acc[p].copy_from_slice(&bias[p][..CB]);
@@ -334,8 +590,18 @@ fn row_tiles<const N: usize>(x: &[f32], panels: [&[f32]; N], bias: [&[f32]; N], 
 
 /// acc = x^T panel for one int8 row, x (kg, 4), panel (kg, CB, 4); kg even.
 #[cfg(target_arch = "aarch64")]
-#[target_feature(enable = "dotprod")]
+#[inline]
 unsafe fn row_tile_i8(x: &[i8], panel: &[i8], kg: usize, acc: &mut [i32; CB]) {
+    if std::arch::is_aarch64_feature_detected!("dotprod") {
+        // SAFETY: the processor has dotprod.
+        return unsafe { row_tile_i8_dot(x, panel, kg, acc) };
+    }
+    neon::row_tile_i8(x, panel, kg, acc)
+}
+
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "dotprod")]
+unsafe fn row_tile_i8_dot(x: &[i8], panel: &[i8], kg: usize, acc: &mut [i32; CB]) {
     assert!(kg > 0 && kg % 2 == 0 && x.len() >= kg * 4 && panel.len() >= kg * CB * 4);
     // SAFETY: the loop reads kg groups from each buffer (checked above) and writes acc's 16 i32s.
     std::arch::asm!(
@@ -377,6 +643,16 @@ unsafe fn row_tile_i8(x: &[i8], panel: &[i8], kg: usize, acc: &mut [i32; CB]) {
 
 #[cfg(not(any(target_arch = "aarch64", target_arch = "wasm32")))]
 unsafe fn row_tile_i8(x: &[i8], panel: &[i8], kg: usize, acc: &mut [i32; CB]) {
+    #[cfg(target_arch = "x86_64")]
+    if x86::has() {
+        // SAFETY: has() found AVX2; the kernel checks its buffer lengths.
+        return unsafe { x86::row_tile_i8(x, panel, kg, acc) };
+    }
+    row_tile_i8_plain(x, panel, kg, acc)
+}
+
+#[cfg(not(any(target_arch = "aarch64", target_arch = "wasm32")))]
+fn row_tile_i8_plain(x: &[i8], panel: &[i8], kg: usize, acc: &mut [i32; CB]) {
     *acc = [0; CB];
     for g in 0..kg {
         for c in 0..CB {
@@ -389,15 +665,38 @@ unsafe fn row_tile_i8(x: &[i8], panel: &[i8], kg: usize, acc: &mut [i32; CB]) {
 
 /// Rows quantized to int8, symmetric to 127, rounded half to even.
 #[cfg(any(test, not(target_arch = "wasm32")))]
-#[inline]
+#[inline(always)]
 fn q8_scale(row: &[f32]) -> f32 {
     row.iter().fold(0.0f32, |m, v| m.max(v.abs())).max(1e-30) / 127.0
 }
 
 #[cfg(any(test, not(target_arch = "wasm32")))]
-#[inline]
+#[inline(always)]
 fn q8(v: f32, s: f32) -> i8 {
     (v / s).round_ties_even().clamp(-127.0, 127.0) as i8
+}
+
+/// row into out as q8_scale and q8 make it; returns the scale.
+#[cfg(not(target_arch = "wasm32"))]
+#[inline(always)]
+fn quantize_plain(row: &[f32], out: &mut [i8]) -> f32 {
+    let s = q8_scale(row);
+    for (q, &v) in out.iter_mut().zip(row) {
+        *q = q8(v, s);
+    }
+    s
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[inline]
+fn quantize(row: &[f32], out: &mut [i8]) -> f32 {
+    assert_eq!(row.len(), out.len());
+    #[cfg(target_arch = "x86_64")]
+    if x86::has() {
+        // SAFETY: has() found AVX2 and FMA.
+        return unsafe { x86::quantize(row, out) };
+    }
+    quantize_plain(row, out)
 }
 
 /// Row r of xp (tile_i8's order) from row, quantized as q8_scale and q8 do (to the bit for rows
@@ -469,10 +768,6 @@ impl Linear {
         assert_eq!(w.len(), cout * cin);
         assert_eq!(scale.len(), cout);
         assert_eq!(b.len(), cout);
-        #[cfg(target_arch = "aarch64")]
-        if !std::arch::is_aarch64_feature_detected!("dotprod") {
-            return err("int8 weights need the dotprod extension, which this CPU lacks");
-        }
         if cin % 4 != 0 {
             return err(format!("an int8 Linear needs inputs in fours, not {cin}"));
         }
@@ -516,11 +811,11 @@ impl Linear {
         let (np, kg) = ((cout + CB - 1) / CB, cin / 4);
         #[cfg(not(target_arch = "wasm32"))]
         if t == 1 && kg % 2 == 0 {
-            let s = q8_scale(x);
-            let q: Vec<i8> = x.iter().map(|&v| q8(v, s)).collect();
+            let mut q = vec![0i8; cin];
+            let s = quantize(x, &mut q);
             let mut acc = [0i32; CB];
             for p in 0..np {
-                // SAFETY: the kernel checks its buffer lengths; new_i8 checked for dotprod.
+                // SAFETY: the kernel checks its buffer lengths.
                 unsafe { row_tile_i8(&q, &self.qpanels[p * kg * CB * 4..(p + 1) * kg * CB * 4], kg, &mut acc) };
                 for c in 0..CB.min(cout - p * CB) {
                     out[p * CB + c] = acc[c] as f32 * (s * self.wscale[p * CB + c]) + self.b[p * CB + c];
@@ -549,11 +844,7 @@ impl Linear {
                 }
                 #[cfg(not(target_arch = "wasm32"))]
                 {
-                    let s = q8_scale(row);
-                    sx[r] = s;
-                    for (q, &v) in qrow.iter_mut().zip(row) {
-                        *q = q8(v, s);
-                    }
+                    sx[r] = quantize(row, &mut qrow);
                     for g in 0..kg {
                         xp[(g * XP + r) * XG..(g * XP + r + 1) * XG].copy_from_slice(&qrow[g * 4..g * 4 + 4]);
                     }
@@ -561,7 +852,7 @@ impl Linear {
             }
             for p in 0..np {
                 let panel = &self.qpanels[p * kg * CB * 4..(p + 1) * kg * CB * 4];
-                // SAFETY: the kernel checks its buffer lengths; new_i8 checked for dotprod.
+                // SAFETY: the kernel checks its buffer lengths.
                 unsafe { tile_i8(&xp, panel, kg, rn, &mut acc) };
                 let n = CB.min(cout - p * CB);
                 #[cfg(target_arch = "wasm32")]
@@ -756,10 +1047,21 @@ pub fn gelu(x: f32) -> f32 {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn gelu_slice(x: &mut [f32]) {
+#[inline(always)]
+fn gelu_slice_plain(x: &mut [f32]) {
     for v in x.iter_mut() {
         *v = gelu(*v);
     }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn gelu_slice(x: &mut [f32]) {
+    #[cfg(target_arch = "x86_64")]
+    if x86::has() {
+        // SAFETY: has() found AVX2 and FMA.
+        return unsafe { x86::gelu_slice(x) };
+    }
+    gelu_slice_plain(x)
 }
 
 /// gelu on four lanes, the same arithmetic as the scalar's.
@@ -993,6 +1295,100 @@ impl ConvNeXt {
 mod tests {
     use super::*;
     use crate::rng::Rng;
+
+    #[test]
+    fn accel_warns_of_the_plain_loops_or_refuses_them() {
+        assert_eq!(accel_for(true, None), Ok(None));
+        assert_eq!(accel_for(true, Some("require")), Ok(None));
+        assert!(accel_for(false, None).unwrap().unwrap().contains("WARNING"));
+        assert!(accel_for(false, Some("require")).unwrap_err().contains("refused"));
+        assert!(accel_for(true, Some("1")).unwrap_err().contains("require, or unset"));
+        assert!(accel_for(false, Some("")).is_err());
+    }
+
+    /// The int8 kernels without SDOT against the ones with it: the same sums, weights of -128 among them.
+    #[cfg(target_arch = "aarch64")]
+    #[test]
+    fn neon_int8_kernels_are_the_sdot_ones() {
+        if !std::arch::is_aarch64_feature_detected!("dotprod") {
+            panic!("this machine has no dotprod to test against");
+        }
+        let mut seed = 0x9e3779b97f4a7c15u64;
+        let mut next = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        for kg in [1usize, 2, 13, 64, 256] {
+            let w: Vec<i8> = (0..kg * CB * 4).map(|i| if i < 64 { -128 } else { (next() % 256) as u8 as i8 }).collect();
+            let xq: Vec<i8> = (0..kg * XP * 4).map(|i| if i < 8 { 127 - 254 * (i as i32 % 2) } else { (next() % 255) as i32 - 127 } as i8).collect();
+            let (mut got, mut want) = ([[0i32; CB]; RB], [[0i32; CB]; RB]);
+            neon::tile_i8(&xq, &w, kg, &mut got);
+            unsafe { tile_i8_dot(&xq, &w, kg, &mut want) };
+            assert_eq!(got, want, "tile_i8, {kg} groups");
+            if kg % 2 == 0 {
+                let (mut got, mut want) = ([0i32; CB], [0i32; CB]);
+                neon::row_tile_i8(&xq[..kg * 4], &w, kg, &mut got);
+                unsafe { row_tile_i8_dot(&xq[..kg * 4], &w, kg, &mut want) };
+                assert_eq!(got, want, "row_tile_i8, {kg} groups");
+            }
+        }
+    }
+
+    /// The x86-64 kernels against the plain loops: the same bits, int8 weights of -128 among them.
+    #[cfg(target_arch = "x86_64")]
+    #[test]
+    fn x86_kernels_are_the_plain_loops() {
+        if !x86::has() {
+            panic!("this machine has no AVX2 and FMA to test");
+        }
+        let mut seed = 0x9e3779b97f4a7c15u64;
+        let mut next = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        for cin in [4usize, 8, 52, 256] {
+            let f: Vec<f32> = (0..cin * (XP + CB * 2) + CB * 2).map(|_| (next() % 20001) as f32 / 5000.0 - 2.0).collect();
+            let (xp, rest) = f.split_at(cin * XP);
+            let (p0, rest) = rest.split_at(cin * CB);
+            let (p1, b) = rest.split_at(cin * CB);
+            let bias: &[f32; CB] = b[..CB].try_into().unwrap();
+            let (mut got, mut want) = ([[0.0f32; CB]; RB], [[0.0f32; CB]; RB]);
+            unsafe { x86::tile(xp, p0, cin, bias, &mut got) };
+            tile_plain(xp, p0, cin, bias, &mut want);
+            assert_eq!(got.map(|r| r.map(f32::to_bits)), want.map(|r| r.map(f32::to_bits)), "tile, {cin} inputs");
+            let x = &xp[..cin];
+            let mut got = [[0.0f32; CB]; 2];
+            unsafe { x86::row_tiles(x, [p0, p1], [&b[..CB], &b[CB..]], &mut got) };
+            for (p, panel) in [p0, p1].into_iter().enumerate() {
+                for c in 0..CB {
+                    let want = x.iter().enumerate().fold(b[p * CB + c], |a, (i, &xv)| xv.mul_add(panel[i * CB + c], a));
+                    assert_eq!(got[p][c].to_bits(), want.to_bits(), "row_tiles, {cin} inputs");
+                }
+            }
+            let kg = cin / 4;
+            let w: Vec<i8> = (0..kg * CB * 4).map(|_| (next() % 256) as u8 as i8).collect();
+            let xq: Vec<i8> = (0..kg * XP * 4).map(|_| ((next() % 255) as i32 - 127) as i8).collect();
+            let (mut got, mut want) = ([[0i32; CB]; RB], [[0i32; CB]; RB]);
+            unsafe { x86::tile_i8(&xq, &w, kg, &mut got) };
+            tile_i8_plain(&xq, &w, kg, RB, &mut want);
+            assert_eq!(got, want, "tile_i8, {cin} inputs");
+            let (mut got, mut want) = ([0i32; CB], [0i32; CB]);
+            unsafe { x86::row_tile_i8(&xq[..kg * 4], &w, kg, &mut got) };
+            row_tile_i8_plain(&xq[..kg * 4], &w, kg, &mut want);
+            assert_eq!(got, want, "row_tile_i8, {cin} inputs");
+            let (mut got, mut want) = (vec![0i8; cin], vec![0i8; cin]);
+            let (sg, sw) = (unsafe { x86::quantize(x, &mut got) }, quantize_plain(x, &mut want));
+            assert_eq!((sg.to_bits(), got), (sw.to_bits(), want), "quantize, {cin} inputs");
+            let (mut got, mut want) = (f.clone(), f.clone());
+            unsafe { x86::gelu_slice(&mut got) };
+            gelu_slice_plain(&mut want);
+            assert_eq!(got.iter().map(|v| v.to_bits()).collect::<Vec<_>>(), want.iter().map(|v| v.to_bits()).collect::<Vec<_>>(), "gelu_slice, {cin} inputs");
+        }
+    }
 
     /// The int8 kernel against the same arithmetic done plainly.
     #[test]

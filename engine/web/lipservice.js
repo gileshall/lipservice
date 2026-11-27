@@ -132,15 +132,110 @@ export class Engine {
     return this.check(this.with(bytes, (p, n) => this.x.ls_motion(p, n)));
   }
 
+  // the breaths a choir's singers take: the index's bytes (breaths.json) and the sound's (breaths.bin)
+  breaths(index, sound) {
+    return this.check(this.with(index, (p, n) => this.with(sound, (q, m) => this.x.ls_breaths(p, n, q, m))));
+  }
+
+  // a part of a choir performed as a person sings it (engine/src/part.rs), its breaths in its
+  // samples: {singer, text (the song as sung), breaths: [[sample of the part, samples]], lag (s it
+  // starts late by), shift (semitones, its detune in it)}. part: as choirs.js arrange() gives it;
+  // motion: from motion(), or -1. Close the singer when done.
+  perform(voice, part, motion = -1) {
+    const b = new TextEncoder().encode(JSON.stringify(part));
+    const h = this.check(this.with(b, (p, n) => this.x.ls_perform(voice, p, n, motion)));
+    return { singer: new Singer(this, h), ...this.info(this.check(this.x.ls_perform_info())) };
+  }
+
+  // JSON this engine left at ls_info, n bytes of it
+  info(n) {
+    return JSON.parse(new TextDecoder().decode(new Uint8Array(this.x.memory.buffer, this.x.ls_info(), n)));
+  }
+
+  // a song's text read (engine/src/song.rs, the one reader of the format; needs no model): {bpm,
+  // bpm_line, beats, lead (beats before the first word), together, diction: [{line, text}], items:
+  // [{line, kind: "rest" | "word", beat, beats; a word's: word, braces (or null), notes: [[{note,
+  // beats_text, midi, beats}]] a syllable each}], vibrato: [{line, beat, sizes}]}. A line is its
+  // number from 1. A text that is no song throws, the line's number first.
+  song(text) {
+    const b = new TextEncoder().encode(text);
+    return this.info(this.check(this.with(b, (p, n) => this.x.ls_song(p, n))));
+  }
+
+  // a choir arranged (engine/src/choir.rs arrange, as choirs.js arrange() takes it): {parts, seats,
+  // room, bpm}, as choir.js start() takes them
+  arrange(c, { list, route, seed = 0, voices = [], songs = [], room, motion, how = {} }) {
+    const ask = { choir: c, list: list.map(({ name, sex }) => ({ name, sex })), route, seed, voices_by_part: voices.map((v) => v ?? null), songs: songs.map((v) => v ?? null), how };
+    if (room !== undefined) ask.room = room;
+    if (motion !== undefined) ask.motion = motion === null ? "none" : motion; // null: the machine vibrato
+    const b = new TextEncoder().encode(JSON.stringify(ask));
+    return this.info(this.check(this.with(b, (p, n) => this.x.ls_arrange(p, n))));
+  }
+
+  // a singer's own machine vibrato: {vibrato (peak semitones), vibratoHz, vibratoDelay (s)}
+  vibrato(seed) {
+    const [vibrato, vibratoHz, vibratoDelay] = this.info(this.check(this.x.ls_vibrato(seed)));
+    return { vibrato, vibratoHz, vibratoDelay };
+  }
+
+  // n seats facing the listener, left to right (choir.rs seats)
+  seats(n, panMax, halfAngle) {
+    return this.info(this.check(this.x.ls_seats(n, panMax, halfAngle)));
+  }
+
+  // a source at gain from a seat as taps [{ch, g, d}] (choir.rs taps)
+  taps(gain, seat) {
+    const b = new TextEncoder().encode(JSON.stringify(seat));
+    return this.info(this.check(this.with(b, (p, n) => this.x.ls_taps(gain, p, n))));
+  }
+
+  // the rooms a choir may be sung in, by name
+  rooms() {
+    return this.info(this.check(this.x.ls_rooms()));
+  }
+
+  // one voice heard alone on its way out: speech, or a song sung alone (sung)
+  alone(sung = false) {
+    return new Alone(this, this.check(this.x.ls_alone(sung ? 1 : 0)));
+  }
+
   // a song to sing a step at a time, any number at once, in a style: the vibrato (peak
   // semitones), its rate (Hz) and how far into a vowel it starts (s), the glide (frames),
-  // dynamics, breathiness, diction, and a motion (from motion(), in place of the vibrato: one of
-  // its singers by the seed, motionScale times that singer's own size) or -1. With the defaults,
-  // sing()'s samples.
+  // dynamics, breathiness, the diction (rules as lines, engine/src/diction.rs, read before the
+  // song's own; who: {track, voice, tags}, who sings, for the rules' for=), and a motion (from
+  // motion(), in place of the vibrato: one of its singers by the seed, motionScale times that
+  // singer's own size) or -1. With the defaults, sing()'s samples.
   // Close it when done.
-  singer(voice, song, { shift = 0, seed = 0, vibrato = 0.25, vibratoHz = 5.5, vibratoDelay = 0.25, glide = 9, dynamics = 0, breathiness = 1, diction = false, motion = -1, motionScale = 1 } = {}) {
+  singer(voice, song, { shift = 0, seed = 0, vibrato = 0.25, vibratoHz = 5.5, vibratoDelay = 0.25, glide = 9, dynamics = 0, breathiness = 1, diction = [], who = {}, motion = -1, motionScale = 1 } = {}) {
+    if (!Array.isArray(diction)) throw new Error(`diction ${JSON.stringify(diction)}: rules as lines, a list`);
     const b = new TextEncoder().encode(song);
-    return new Singer(this, this.check(this.with(b, (p, n) => this.x.ls_sing_open(voice, p, n, shift, seed, vibrato, vibratoHz, vibratoDelay, glide, dynamics, breathiness, diction ? 1 : 0, motion, motionScale))));
+    const d = new TextEncoder().encode(JSON.stringify({ who, diction }));
+    return new Singer(
+      this,
+      this.check(this.with(b, (p, n) => this.with(d, (q, m) => this.x.ls_sing_open(voice, p, n, shift, seed, vibrato, vibratoHz, vibratoDelay, glide, dynamics, breathiness, q, m, motion, motionScale)))),
+    );
+  }
+}
+
+// One voice heard alone on its way out (engine/src/alone.rs): a song let down to speech's level,
+// held under the ceiling. push() gives what it holds back, end() the rest; close it when done.
+export class Alone {
+  constructor(engine, handle) {
+    this.engine = engine;
+    this.handle = handle;
+  }
+
+  push(c) {
+    const e = this.engine;
+    return e.samples(e.check(e.with(new Uint8Array(c.buffer, c.byteOffset, c.byteLength), (p, n) => e.x.ls_alone_push(this.handle, p, n))));
+  }
+
+  end() {
+    return this.engine.samples(this.engine.check(this.engine.x.ls_alone_end(this.handle)));
+  }
+
+  close() {
+    this.engine.check(this.engine.x.ls_alone_close(this.handle));
   }
 }
 

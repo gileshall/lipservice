@@ -8,9 +8,9 @@
 // part as the Sing tab does: written as it is for a woman, an octave down for a man. The songs are
 // public domain or written for lipservice.
 
-import { makeSeats, coprimeStep, REFL_SUM } from "./choir.js";
-import { parse, laned, LANES, LEAD as SILENT } from "./perform.js";
-import { rng, FULL_CHOIR, LOUD } from "./room.js";
+import { coprimeStep, REFL_SUM } from "./choir.js";
+import { parse, laned, LEAD as SILENT } from "./perform.js";
+import { rng, engine } from "./room.js";
 import { LEVELS } from "./choirs_levels.js";
 import { ROUTES } from "./routes.js";
 export { ROUTES };
@@ -18,13 +18,10 @@ import { DEMOS } from "./choirs_demos.js";
 
 // how the sing-demos pieces were sung: pitch motion from VocalSet's singers, a little loose in time
 // and tune, breaths taken in the rests
-const HUMAN = { glide: 9, dynamics: 1.3, breathiness: 0.35, diction: true };
+const HUMAN = { glide: 9, dynamics: 1.3, breathiness: 0.35, diction: [] };
 // the vibrato's size where a preset's style gives none: under the singers' own
 export const VIBRATO = 0.6;
 const HYMN = { ...HUMAN, motion: "vibrato", jitter: 2, detune: 3, spread: 0, breath: 0.85 };
-// a choir's singers keep time together (perform.js jitter's moments), and a note gives a breath a
-// third of itself at most
-const TOGETHER = true, GIVE = 1 / 3;
 
 const fmt = (x) => x.toFixed(4).replace(/\.?0+$/, "");
 const NEAR = 0.005, GAP = 0.01; // beats: how far apart a take's parts are written, and the rest a breath is taken in
@@ -34,11 +31,11 @@ const note = (m) => fmt(m + 12); // written an octave up, for a man to sing an o
 // time-ordered, starting `lead` beats before the first: a rest wherever one note does not run into
 // the next.
 function song(bpm, notes, lead) {
-  const out = [`bpm ${bpm}`, `rest ${fmt(lead)}`];
+  const out = [`%bpm ${bpm}`, `%rest ${fmt(lead)}`];
   let t = notes[0].at;
   for (const n of notes) {
     if (n.at < t - 1e-9) throw new Error(`a note at ${n.at} overlaps the one before`);
-    if (n.at > t + 1e-9) out.push(`rest ${fmt(n.at - t)}`);
+    if (n.at > t + 1e-9) out.push(`%rest ${fmt(n.at - t)}`);
     out.push(`${n.word} ${n.notes.map((g) => g.map(([m, b]) => `${note(m)}:${fmt(b)}`).join("+")).join(" ")}`);
     t = n.at + n.notes.flat().reduce((a, [, b]) => a + b, 0);
   }
@@ -49,11 +46,12 @@ function song(bpm, notes, lead) {
 // not following, a breath may be taken: the note 0.01 beats shorter, a rest in their place.
 const lined = (long) => (part) => {
   const ls = part.song.trimEnd().split("\n");
-  const word = (l) => l !== undefined && !["bpm", "rest", ...LANES].includes(l.split(" ")[0]);
+  // a word's line: one that says something and is no instruction or comment (perform.js parse)
+  const word = (l) => l !== undefined && l.trim() !== "" && !/^[%#]/.test(l.trim());
   const song = ls.flatMap((l, i) => {
-    const m = /^(.*:)([\d.]+)$/.exec(l);
+    const m = /^(.*:)([\d.]+)$/.exec(l.trimEnd());
     if (!word(l) || !word(ls[i + 1]) || !m || +m[2] < long) return [l];
-    return [`${m[1]}${fmt(+m[2] - 0.01)}`, "rest 0.01"];
+    return [`${m[1]}${fmt(+m[2] - 0.01)}`, "%rest 0.01"];
   });
   return { ...part, song: song.join("\n") + "\n" };
 };
@@ -264,13 +262,13 @@ function siuil(c) {
     "Far voice": [...calls(1), ...hold(69, [T[2] - 4, T[2] + 3, T[2] + 10, T[2] + 18, T[2] + 26, T[2] + 30]), ...calls(2), ...hold(69, [C[2] + 8, C[2] + 16, C[2] + 24, C[2] + 30])],
   };
   const write = (name) => {
-    const evs = sung[name], out = [`bpm ${BPM}`, `rest ${LEAD}`];
+    const evs = sung[name], out = [`%bpm ${BPM}`, `%rest ${LEAD}`];
     let t = evs[0].at;
     for (const e of evs) {
       const gap = e.at - t, g = e.notes.map(([m, b]) => `${fmt(m)}:${fmt(b)}`).join("+");
       if (gap < -5e-5) throw new Error(`Siuil a Ruin: ${name}: ${e.word} at ${e.at} starts before the note before it ends`);
       if (e.k > 0 && gap > 5e-5) throw new Error(`Siuil a Ruin: ${name}: a rest inside ${e.word}`);
-      if (gap > 5e-5) out.push(`rest ${fmt(gap)}`);
+      if (gap > 5e-5) out.push(`%rest ${fmt(gap)}`);
       if (e.k > 0) out[out.length - 1] += ` ${g}`;
       else out.push(`${e.word} ${g}`);
       t = e.at + beats(e);
@@ -382,14 +380,14 @@ function strophes(title, c, { plan, close, source }) {
       return { ...e, at: warp(e.at), notes };
     });
     if (evs[0].at < REST) no(`${p.name} starts at beat ${evs[0].at}`);
-    const zero = evs[0].at - REST, out = [`bpm ${bpm}`, `rest ${REST}`], secs = (t) => +(SILENT + (t - zero) * spb).toFixed(4);
+    const zero = evs[0].at - REST, out = [`%bpm ${bpm}`, `%rest ${REST}`], secs = (t) => +(SILENT + (t - zero) * spb).toFixed(4);
     const levels = [[0, evs[0].level]];
     let t = evs[0].at;
     evs.forEach((e, j) => {
       const gap = e.at - t, g = e.notes.map(([m, d]) => `${m}:${fmt(d)}`).join("+");
       if (gap < -5e-5) no(`${p.name}: ${e.word} at ${e.at} starts before the note before it ends`);
       if (e.k > 0 && gap > 5e-5) no(`${p.name}: a rest inside ${e.word}`);
-      if (gap > 5e-5) out.push(`rest ${fmt(gap)}`);
+      if (gap > 5e-5) out.push(`%rest ${fmt(gap)}`);
       if (j && e.level !== evs[j - 1].level) {
         const d = Math.min(0.25, gap * spb / 3);
         if (!(d >= 0.05)) no(`${p.name}: no rest before ${e.word} at ${e.at} to change level in`);
@@ -602,14 +600,14 @@ function scored(title, cast, sung, { bpm, close = {}, swells = [], lifts = [] })
       return { ...e, at: warp(e.at), notes, level: e.level ?? 1 };
     });
     if (evs[0].at < REST) no(`${p.name} starts at beat ${evs[0].at}`);
-    const zero = evs[0].at - REST, out = [`bpm ${bpm}`, `rest ${REST}`], secs = (t) => +(SILENT + (t - zero) * spb).toFixed(4);
+    const zero = evs[0].at - REST, out = [`%bpm ${bpm}`, `%rest ${REST}`], secs = (t) => +(SILENT + (t - zero) * spb).toFixed(4);
     const steps = [[0, evs[0].level]];
     let t = evs[0].at, size = 1;
     evs.forEach((e, j) => {
       const gap = e.at - t, g = e.notes.map(([m, d]) => `${fmt(m)}:${fmt(d)}`).join("+");
       if (gap < -5e-5) no(`${p.name}: ${e.word} at ${e.at} starts before the note before it ends`);
       if (e.k > 0 && gap > 5e-5) no(`${p.name}: a rest inside ${e.word}`);
-      if (gap > 5e-5) out.push(`rest ${fmt(gap)}`);
+      if (gap > 5e-5) out.push(`%rest ${fmt(gap)}`);
       if (j && e.level !== evs[j - 1].level) {
         const d = gap * spb >= 0.15 ? Math.min(0.25, gap * spb / 3) : 0.04, a = gap * spb >= 0.15 ? secs(t) + d : secs(e.at) - 0.06;
         if (!(a > steps.at(-1)[0])) no(`${p.name}: no room before ${e.word} at ${e.at} to change level in`);
@@ -638,7 +636,7 @@ function scored(title, cast, sung, { bpm, close = {}, swells = [], lifts = [] })
         // a size held to the word's end says nothing
         while (pts.length && pts.at(-1)[1] !== null && pts.length > 1 && pts.at(-1)[0] === pts.at(-2)[0]) pts.pop();
         if (pts.length === 1 && pts[0][1] !== null && pts[0][0] === was) pts.pop();
-        if (pts.length) out.push(`vibrato ${pts.map(([v, b]) => (b === null ? fmt(v) : `${fmt(v)}:${fmt(b)}`)).join(" ")}`);
+        if (pts.length) out.push(`%vibrato ${pts.map(([v, b]) => (b === null ? fmt(v) : `${fmt(v)}:${fmt(b)}`)).join(" ")}`);
         out.push(`${e.word} ${g}`);
       } else out[out.length - 1] += ` ${g}`;
       t = sylEnd(e);
@@ -657,10 +655,9 @@ function scored(title, cast, sung, { bpm, close = {}, swells = [], lifts = [] })
 }
 
 // A singer's own machine vibrato, as the sing-demos drew each singer's: its
-// peak (semitones), its rate (Hz) and how far into a vowel it starts (s).
+// peak (semitones), its rate (Hz) and how far into a vowel it starts (s). The engine's.
 export function vibrato(seed) {
-  const r = rng(`vibrato ${seed}`);
-  return { vibrato: r.between(0.15, 0.35), vibratoHz: r.between(4.8, 6.0), vibratoDelay: r.between(0.2, 0.5) };
+  return engine().vibrato(seed);
 }
 
 // The parts of preset `c` as choir.js start() takes them: the preset's voices and songs unless
@@ -677,33 +674,9 @@ export function vibrato(seed) {
 // measured as it is written (c.loud, dBFS: choir_levels.mjs) has them brought to the room's LOUD;
 // one that has not is set so that all its singers at once at their fullest are the room's FULL_CHOIR.
 // A piece's measured level is a route's own (routes.js), so a choir is arranged for one.
-export function arrange(c, { list, route, seed = 0, voices = [], songs = [], room = c.room, motion = c.style.motion, how = {} }) {
-  if (!ROUTES.includes(route)) throw new Error(`a choir is arranged for a route, ${ROUTES.join(" or ")}: ${route}`);
-  const level = c.level ?? 1 / (c.parts.length * REFL_SUM);
-  const { sway = 1, loose = 1, vibrato: size = c.style.vibratoSize ?? VIBRATO, ...own } = how;
-  for (const k of Object.keys(own)) if (!["glide", "dynamics", "breathiness", "breath"].includes(k)) throw new Error(`how a choir sings: no ${k}`);
-  const style = { ...c.style, ...own };
-  const parts = c.parts.map((p, i) => {
-    const voice = voices[i] ?? p.voice, v = list.find((v) => v.name === voice);
-    if (!v) throw new Error(`${p.name}: no voice ${voice}`);
-    const mine = vibrato(seed + i), k = { dynamics: 1, breathiness: 1, detune: 1, spread: 1, ...p.scale };
-    if (Object.keys(k).length !== 4) throw new Error(`${p.name}: a scale of ${Object.keys(p.scale)}`);
-    return {
-      ...style, motion: (motion === c.style.motion ? p.motion : null) ?? motion, motionScale: sway, ...mine, vibrato: mine.vibrato * sway, vibratoSize: size, dynamics: style.dynamics * k.dynamics, breathiness: style.breathiness * k.breathiness,
-      // singers who keep time together start together: a start of one's own puts a vowel under the others' S
-      jitter: Math.round((style.jitter ?? 0) * loose), detune: (style.detune ?? 0) * loose * k.detune, spread: (style.together ?? TOGETHER) ? 0 : (style.spread ?? 0) * loose * k.spread,
-      together: style.together ?? TOGETHER, give: style.give ?? GIVE,
-      name: p.name, voice, sex: v.sex, shift: v.sex === "F" ? 0 : -12, seed: seed + i,
-      song: songs[i] ?? p.song, at: p.at ?? 0, gain: level * (p.gain ?? 1), levels: p.levels ?? null, seat: p.seat ?? i,
-    };
-  });
-  const full = Math.hypot(...parts.map((p) => p.gain * Math.max(...(p.levels ?? [[0, 1]]).map(([, k]) => k))));
-  // the loud passages as measured on this route (choirs_levels.js), or one number for every route
-  const loud = typeof c.loud === "object" ? c.loud[route] : c.loud;
-  const k = loud === undefined ? FULL_CHOIR / full : 10 ** ((LOUD - loud) / 20);
-  if (!(k > 0 && Number.isFinite(k))) throw new Error(`a choir's level: loud passages at ${loud}, a full choir of ${full}`);
-  for (const p of parts) p.gain *= k;
-  return { parts, seats: makeSeats(parts.length, c.pan), room, bpm: parse(parts[0].song).bpm };
+// Arranged by the engine (engine/src/choir.rs arrange): room.js setEngine first.
+export function arrange(c, opts) {
+  return engine().arrange(c, opts);
 }
 
 const WRITTEN = {
@@ -713,8 +686,8 @@ const WRITTEN = {
     room: "drier", pan: 0.5, style: HYMN,
     source: "Melody by Beethoven (Symphony No. 9, 1824); words by Henry van Dyke (Joyful, Joyful, We Adore Thee, 1907). Both public domain. Four-part harmony arranged for lipservice, in G; women on soprano and alto, men on tenor and bass.",
     parts: [
-      { name: "Soprano", voice: "4446", song: `bpm 100
-rest 2
+      { name: "Soprano", voice: "4446", song: `%bpm 100
+%rest 2
 joyful B4:1 B4:1
 joyful C5:1 D5:1
 we D5:1
@@ -761,10 +734,10 @@ the B4:1
 light A4:1.5
 of G4:0.5
 day G4:3
-rest 0.5
+%rest 0.5
 ` },
-      { name: "Alto", voice: "6345", song: `bpm 100
-rest 2
+      { name: "Alto", voice: "6345", song: `%bpm 100
+%rest 2
 joyful G4:1 G4:1
 joyful G4:1 F#4:1
 we G4:1
@@ -811,10 +784,10 @@ the G4:1
 light F#4:1.5
 of D4:0.5
 day D4:3
-rest 0.5
+%rest 0.5
 ` },
-      { name: "Tenor", voice: "3752", song: `bpm 100
-rest 2
+      { name: "Tenor", voice: "3752", song: `%bpm 100
+%rest 2
 joyful D5:1 D5:1
 joyful E5:1 D5:1
 we D5:1
@@ -861,10 +834,10 @@ the D5:1
 light D5:1.5
 of B4:0.5
 day B4:3
-rest 0.5
+%rest 0.5
 ` },
-      { name: "Bass", voice: "2428", song: `bpm 100
-rest 2
+      { name: "Bass", voice: "2428", song: `%bpm 100
+%rest 2
 joyful G3:1 G3:1
 joyful C4:1 A3:1
 we B3:1
@@ -911,7 +884,7 @@ the G4:1
 light D4:1.5
 of G3:0.5
 day G3:3
-rest 0.5
+%rest 0.5
 ` },
     ].map(lined(2)),
   },
@@ -919,8 +892,8 @@ rest 0.5
     room: "drier", pan: 0.85, style: HYMN,
     source: "Traditional round (tune published 1881, words 1852), public domain. Four entries two bars apart, each sung by a woman and a man an octave below, three times through; eight voices.",
     parts: [
-      { name: "Entry 1, high", voice: "4446", song: `bpm 264
-rest 4
+      { name: "Entry 1, high", voice: "4446", song: `%bpm 264
+%rest 4
 row C4:3
 row C4:3
 row C4:2
@@ -976,8 +949,8 @@ but E4:2
 a D4:1
 dream C4:6
 ` },
-      { name: "Entry 1, low", voice: "2428", song: `bpm 264
-rest 4
+      { name: "Entry 1, low", voice: "2428", song: `%bpm 264
+%rest 4
 row C4:3
 row C4:3
 row C4:2
@@ -1033,8 +1006,8 @@ but E4:2
 a D4:1
 dream C4:6
 ` },
-      { name: "Entry 2, high", voice: "6345", song: `bpm 264
-rest 16
+      { name: "Entry 2, high", voice: "6345", song: `%bpm 264
+%rest 16
 row C4:3
 row C4:3
 row C4:2
@@ -1090,8 +1063,8 @@ but E4:2
 a D4:1
 dream C4:6
 ` },
-      { name: "Entry 2, low", voice: "3752", song: `bpm 264
-rest 16
+      { name: "Entry 2, low", voice: "3752", song: `%bpm 264
+%rest 16
 row C4:3
 row C4:3
 row C4:2
@@ -1147,8 +1120,8 @@ but E4:2
 a D4:1
 dream C4:6
 ` },
-      { name: "Entry 3, high", voice: "1088", song: `bpm 264
-rest 28
+      { name: "Entry 3, high", voice: "1088", song: `%bpm 264
+%rest 28
 row C4:3
 row C4:3
 row C4:2
@@ -1204,8 +1177,8 @@ but E4:2
 a D4:1
 dream C4:6
 ` },
-      { name: "Entry 3, low", voice: "6209", song: `bpm 264
-rest 28
+      { name: "Entry 3, low", voice: "6209", song: `%bpm 264
+%rest 28
 row C4:3
 row C4:3
 row C4:2
@@ -1261,8 +1234,8 @@ but E4:2
 a D4:1
 dream C4:6
 ` },
-      { name: "Entry 4, high", voice: "6147", song: `bpm 264
-rest 40
+      { name: "Entry 4, high", voice: "6147", song: `%bpm 264
+%rest 40
 row C4:3
 row C4:3
 row C4:2
@@ -1318,8 +1291,8 @@ but E4:2
 a D4:1
 dream C4:6
 ` },
-      { name: "Entry 4, low", voice: "8088", song: `bpm 264
-rest 40
+      { name: "Entry 4, low", voice: "8088", song: `%bpm 264
+%rest 40
 row C4:3
 row C4:3
 row C4:2
@@ -1381,77 +1354,77 @@ dream C4:6
     room: "drier", pan: 0.5, style: HYMN,
     source: "Nine chords written for lipservice, to hear a vibrato written on the beat (the vibrato lines under Parts as song files). The soprano sings straight and lets the vibrato in on each long note, on the last growing it to twice its usual size and letting it die. The tenor does the opposite: each long note starts wide and settles to a straight tone. The alto has no line and sings as the voice always does, and the bass is straight throughout. Click a singer on the stage to hear one alone.",
     parts: [
-      { name: "Soprano", voice: "4446", song: `bpm 72
-rest 2
-vibrato 0
+      { name: "Soprano", voice: "4446", song: `%bpm 72
+%rest 2
+%vibrato 0
 slow A4:2
 the B4:2
-vibrato 0 1:3
+%vibrato 0 1:3
 tide A4:4
-rest 2
-vibrato 0
+%rest 2
+%vibrato 0
 still D5:2
 the C#5:2
-vibrato 0 1.5:3
+%vibrato 0 1.5:3
 night B4:4
-rest 2
-vibrato 0
+%rest 2
+%vibrato 0
 hold A4:2
 the A4:2
-vibrato 0 0:2 2:4 0:2
+%vibrato 0 0:2 2:4 0:2
 light A4:8
-rest 1
+%rest 1
 ` },
-      { name: "Alto", voice: "6345", song: `bpm 72
-rest 2
+      { name: "Alto", voice: "6345", song: `%bpm 72
+%rest 2
 slow F#4:2
 the G4:2
 tide E4:4
-rest 2
+%rest 2
 still F#4:2
 the E4:2
 night G4:4
-rest 2
+%rest 2
 hold D4:2
 the C#4:2
 light D4:8
-rest 1
+%rest 1
 ` },
-      { name: "Tenor", voice: "3752", song: `bpm 72
-rest 2
+      { name: "Tenor", voice: "3752", song: `%bpm 72
+%rest 2
 slow D5:2
 the D5:2
-vibrato 1.5 0:3
+%vibrato 1.5 0:3
 tide C#5:4
-rest 2
-vibrato 1
+%rest 2
+%vibrato 1
 still D5:2
 the A4:2
-vibrato 1.5 0:3
+%vibrato 1.5 0:3
 night B4:4
-rest 2
-vibrato 1
+%rest 2
+%vibrato 1
 hold A4:2
 the G4:2
-vibrato 2 0:6
+%vibrato 2 0:6
 light F#4:8
-rest 1
+%rest 1
 ` },
-      { name: "Bass", voice: "2428", song: `bpm 72
-rest 2
-vibrato 0
+      { name: "Bass", voice: "2428", song: `%bpm 72
+%rest 2
+%vibrato 0
 slow D4:2
 the B3:2
 tide A3:4
-rest 2
+%rest 2
 still B3:2
 the C#4:2
 night E4:4
-rest 2
+%rest 2
 hold F#4:2
 the A3:2
 light D4:8
-rest 1
+%rest 1
 ` },
     ],
   },

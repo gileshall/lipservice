@@ -91,7 +91,7 @@ for (const name of Object.keys(EXAMPLES).filter((n) => n !== "unfinished")) {
   const rms = Math.sqrt(samples.reduce((a, v) => a + v * v, 0) / samples.length);
   // the song's own length: the beats the engine was given at its tempo, 0.2 s of lead and end,
   // and the first word's opening consonants, which the engine sets before beat 0
-  const beats = open.text.split("\n").filter((l) => l && !/^(bpm|vibrato) /.test(l)).flatMap((l) => (l.startsWith("rest ") ? [l.slice(5)] : l.split(" ").slice(1).flatMap((g) => g.split("+").map((n) => n.split(":")[1])))).reduce((a, b) => a + Number(b), 0);
+  const beats = open.song.beats;
   const want = beats * 60 / sung.bpm + 0.2, onset = secs - want;
   console.log(`     ${name}: ${open.frames} frames, ${secs.toFixed(2)} s of sound made in ${(done.ms / 1000).toFixed(2)} s, ${open.breaths.length} breaths, the singer ${(open.lag * 1000).toFixed(0)} ms late, peak ${loud.toFixed(3)}, rms ${rms.toFixed(4)}, the limiter on for ${(100 * done.held / samples.length).toFixed(2)}% of it`);
   check(samples.length === open.frames * 240 && Math.abs(secs - done.secs) < 1e-9, `${name}: every frame's samples came (${open.frames} frames, ${samples.length} samples)`);
@@ -100,17 +100,11 @@ for (const name of Object.keys(EXAMPLES).filter((n) => n !== "unfinished")) {
   check(done.held < samples.length / 100, `${name}: the limiter is a net, on for under a hundredth of the sound (${(100 * done.held / samples.length).toFixed(2)}%)`);
   // beat 0 is after the engine's 10 frames and the first word's opening consonants: none where it
   // opens on a vowel ("Amazing")
-  check(open.text.startsWith(`bpm ${sung.bpm}\n`) && open.lead === 10 + Math.round(onset * 100) && open.lead >= 10 && open.lead <= 35 && (name !== "grace" || open.lead === 10), `${name}: the song the engine was given is at the part's tempo, its beat 0 ${open.lead} frames in`);
+  check(open.text.startsWith(`%bpm ${sung.bpm}\n`) && open.song.bpm === sung.bpm && open.lead === 10 + Math.round(onset * 100) && open.lead >= 10 && open.lead <= 35 && (name !== "grace" || open.lead === 10), `${name}: the song the engine was given is at the part's tempo, its beat 0 ${open.lead} frames in`);
   // the engine's own word on where a beat falls: each rest it reports starts on the beat the note
   // before it ends on, which is the lead and that many beats in
   {
-    let at = 0;
-    const starts = [];
-    for (const l of open.text.split("\n")) {
-      if (!l || /^(bpm|vibrato) /.test(l)) continue;
-      if (l.startsWith("rest ")) { if (at > 0) starts.push(at); at += Number(l.slice(5)); }
-      else for (const g of l.split(" ").slice(1)) for (const x of g.split("+")) at += Number(x.split(":")[1]);
-    }
+    const starts = open.song.items.filter((x) => x.kind === "rest" && x.beat > 0).map((x) => x.beat);
     const fpb = 100 * 60 / sung.bpm, inner = open.rests.slice(open.rests.length - starts.length);
     const off = starts.map((b, i) => inner[i][0] - open.lead - Math.round(b * fpb));
     console.log(`     ${name}: ${starts.length} rests inside the song; each starts ${JSON.stringify(off)} frames from where the lead of ${open.lead} frames puts its beat`);
@@ -174,7 +168,7 @@ for (const name of Object.keys(EXAMPLES).filter((n) => n !== "unfinished")) {
   const slow = { ...P.blank(P.singer("6147")), tempo: [{ at: 0, bpm: 60 }], marks: [{ at: 6 * 960, breath: true }, { at: 2 * 960, breath: false }] };
   slow.notes = ["la", "la", "la", "la"].map((lyric, i) => ({ at: (2 + 2 * i) * 960, ticks: 2 * 960, pitch: "A4", cents: 0, velocity: 64, release: 64, lyric }));
   const f = await sing(slow);
-  check(!f.error && f.open.breaths.length === 1 && f.open.text.includes("\nrest ") && f.open.breaths[0][0] > 5 * 24000 && f.open.breaths[0][0] < 6.2 * 24000, `a breath marked on a word with no rest before it is taken there, and the one before the first note is not${f.error ? `: ${f.error.message}` : ""}`);
+  check(!f.error && f.open.breaths.length === 1 && f.open.text.includes("\n%rest ") && f.open.breaths[0][0] > 5 * 24000 && f.open.breaths[0][0] < 6.2 * 24000, `a breath marked on a word with no rest before it is taken there, and the one before the first note is not${f.error ? `: ${f.error.message}` : ""}`);
   const m = EXAMPLES.mary();
   m.marks = [{ at: 6 * 480, breath: true }];
   const g = await sing(m);

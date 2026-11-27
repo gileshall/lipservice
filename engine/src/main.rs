@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Giles Hall
 
+use lipservice::alone::Alone;
 use lipservice::breaks::Breaks;
 use lipservice::dsp::{self, HOP, SR};
 use lipservice::front::{self, Phonemizer};
@@ -14,6 +15,7 @@ use lipservice::pitchflow::{PitchFlow, Sampling, Solver, Widen, WIDEN};
 use lipservice::rng::Rng;
 use lipservice::score::{Pitch, ScoreModel};
 use lipservice::sharpen::Sharpen;
+use lipservice::diction::{Rules, Who};
 use lipservice::sing::{Motion, Song, Style};
 use lipservice::ssml;
 use lipservice::passage::Passage;
@@ -44,7 +46,7 @@ const USAGE: &str = "usage:
   lipservice words [-0] < TEXT     (each line's words and stops, or its error; -0: texts split by NUL)
   lipservice tokens G2P.lsw LEXICON.lsw < TEXT    (each line's token ids)
   lipservice g2p G2P.lsw < WORDS   (each word and its G2P phones or !error, tab separated; timing on stderr)
-  lipservice say SCORE.lsw|VOICE.lsw VOCODER.lsw G2P.lsw LEXICON.lsw OUT.wav TEXT [--ssml] [--rate R] [--shift SEMITONES] [--seed N]
+  lipservice say SCORE.lsw|VOICE.lsw VOCODER.lsw G2P.lsw LEXICON.lsw OUT.wav TEXT [--alone] [--timing OUT.json [--named VOICE]] [--ssml] [--rate R] [--shift SEMITONES] [--seed N]
       [--base BASE.lsw] [--vox-part PART.lsw] [--mel-part PART.lsw] [--stream FRAMES] [--pitch FLOW.lsw [--pitch-solver euler] [--pitch-steps 8] [--pitch-temp 1] [--pitch-slow 10] [--pitch-widen 1.85]] [--speaker N] [--sharpen SHAPE.lsw [--widen 1.3]] [--word-pitch K] [--pauses P]
       [--plan OUT.txt]
       [--breaks BREAKS.lsw [--phrase RATE]] [--pace P] [--exclaim K [--exclaim-lift ST] [--exclaim-tilt DB]
@@ -85,17 +87,21 @@ edits to the score (engine/src/inflect.rs). A question not opened by a wh-word r
 --plan writes the plan as rendered, for another renderer: for each part (one, without --stream) the samples
 of silence before it, the token ids, their frames, each frame's log F0 and voicing after every edit, and
 each frame's added loudness and tilt; sing takes it too, without --dynamics or --ring.
+--alone, for say and sing, writes the sound as a voice heard alone goes out (engine/src/alone.rs): a song
+let down to speech's level, then held under a ceiling of -1.5 dBFS, as the page and the Python package give it.
+--timing writes what the voice did when (engine/src/timing.rs: phones, words, notes, pitch and loudness, in
+samples of the sound) as JSON, its voice called --named; say gathers it as a passage is said, so with --stream.
 
-  lipservice sing SCORE.lsw|VOICE.lsw VOCODER.lsw G2P.lsw LEXICON.lsw OUT.wav SONG.txt [--shift SEMITONES] [--base BASE.lsw] [--vox-part PART.lsw] [--mel-part PART.lsw]
+  lipservice sing SCORE.lsw|VOICE.lsw VOCODER.lsw G2P.lsw LEXICON.lsw OUT.wav SONG.txt [--alone] [--timing OUT.json [--named VOICE]] [--shift SEMITONES] [--base BASE.lsw] [--vox-part PART.lsw] [--mel-part PART.lsw]
       [--speaker N] [--sharpen SHAPE.lsw [--widen 1.3]] [--vibrato 0.25] [--vibrato-hz 5.5]
       [--vibrato-delay 0.25] [--motion MOTION.lsw [--motion-scale 1]] [--glide 9] [--dynamics 0] [--ring 0] [--consonants 1]
-      [--breathiness 1] [--diction] [--seed N] [--frames OUT.tsv] [--plan OUT.txt]
+      [--breathiness 1] [--rules RULES.txt] [--for VOICE,TAG,..] [--seed N] [--frames OUT.tsv] [--plan OUT.txt]
 
-  lipservice roll G2P.lsw LEXICON.lsw NOTES.txt WORDS.txt OUT-SONG.txt [--diction] [--join BEATS]
+  lipservice roll G2P.lsw LEXICON.lsw NOTES.txt WORDS.txt OUT-SONG.txt [--rules RULES.txt] [--for VOICE,TAG,..] [--join BEATS]
   lipservice perform SCORE.lsw|VOICE.lsw VOCODER.lsw G2P.lsw LEXICON.lsw OUT.wav SONG.txt [--base BASE.lsw] [--vox-part PART.lsw] [--mel-part PART.lsw] [--seed N]
       [--at S] [--jitter FRAMES] [--detune CENTS] [--spread S] [--breaths BREATHS.json --breath P --sex F|M]
-      [--together] [--give SHARE] [--shift SEMITONES] [--vibrato 0.25] [--vibrato-hz 5.5] [--vibrato-delay 0.25] [--motion MOTION.lsw [--motion-scale 1]]
-      [--glide 9] [--dynamics 0] [--consonants 1] [--breathiness 1] [--diction] [--performed OUT-SONG.txt] [--dry]
+      [--together] [--give SHARE] [--rules RULES.txt] [--shift SEMITONES] [--vibrato 0.25] [--vibrato-hz 5.5] [--vibrato-delay 0.25] [--motion MOTION.lsw [--motion-scale 1]]
+      [--glide 9] [--dynamics 0] [--consonants 1] [--breathiness 1] [--for VOICE,TAG,..] [--performed OUT-SONG.txt] [--dry]
 
   lipservice vox VOX.lsw VOICE.lsw PLAN.txt OUT.wav [--base BASE.lsw] [--vox-part PART.lsw] [--mel-part PART.lsw] [--seed N] [--stream FRAMES]
 
@@ -118,17 +124,19 @@ the loudness and brightness that follow the notes, and --ring raises the sung vo
 by that many dB (the singer's formant); 0, the default, for none. --consonants scales the
 consonants' durations but the stops' and affricates', the vowels giving the time up; --breathiness
 scales the sung vowels' aperiodicity, under 1 for less breath noise. --frames writes each frame's
-log F0 and voicing as rendered. --diction sings every vowel
-stressed and an unstressed ER as AH and R. A voice file's register shift does not apply.
+log F0 and voicing as rendered. --rules is a file of diction rules (engine/src/diction.rs), the
+song's own `%diction` lines after them, both over the rules every song is sung by; `spoken` turns
+a singer's vowels off. --for names who sings, for the rules' for=: the voice, then tags.
+A voice file's register shift does not apply.
 
 roll writes a piano roll's notes and the words under them as a song (engine/src/part.rs gives the words'
 format: a note a syllable, wa-ter for a word's own syllables, a _ for each further note one holds).
 NOTES.txt: a line `bpm N`, then a note a line, NOTE START BEATS (a note name or MIDI number, and
 beats from the part's start); a line `vibrato BEAT SIZE` is the pedal beside them, the vibrato SIZE
-times the voice's own from BEAT until the next such line. --diction counts the syllables as sing --diction sings them; a gap
+times the voice's own from BEAT until the next such line. --rules and --for count the syllables as sing sings them by those; a gap
 between words of --join beats or less is held by the note before it (0 by default: every gap a rest).
 
-perform sings a song as a person does, as the page's choirs are sung (engine/web/perform.js): each
+perform sings a song as a person does, as the page's choirs are sung (engine/src/part.rs): each
 phrase up to --jitter frames off the beat and its notes pulled about inside it, the pitch up to
 --detune cents off, the start up to --spread seconds off (reported, not put in the file), all drawn by
 --seed; and a breath from the library (its index BREATHS.json, its sound beside it as .bin: 16-bit,
@@ -448,6 +456,9 @@ fn say(args: &[String]) -> Result<()> {
     let mut rest = args[7..].to_vec();
     let (ws, clock) = based(ws, &mut rest, route.as_ref(), if vm.is_some() { &["vox"] } else if mv.is_some() { &["mel"] } else { &[] })?;
     let is_ssml = switch(&mut rest, "--ssml")?;
+    let alone = switch(&mut rest, "--alone")?;
+    let timing_out = file_flag(&mut rest, "--timing")?;
+    let named = value_flag(&mut rest, "--named", "a name")?;
     let plan_out = file_flag(&mut rest, "--plan")?;
     let (flow, shape) = (
         file_flag(&mut rest, "--pitch")?,
@@ -705,18 +716,24 @@ fn say(args: &[String]) -> Result<()> {
             let tilt = if matches!(back, Render::Voc(_)) { &[] } else { tilt };
             plan_part(st.gap(), &st.inflection().tokens, s.durations(), lf0, vuv, gain, tilt)
         };
+        let mut told = lipservice::timing::Told::default();
         while !st.done() {
             if st.stream().done() {
                 plan += &part(&st)?;
             }
-            st.step(step as usize, &mut y)?;
+            told.step(&mut st, step as usize, &mut y)?;
             steps += 1;
             if first.is_none() && !y.is_empty() {
                 first = Some((Instant::now(), st.stream().fed(), y.len()));
             }
         }
+        told.end(&st)?;
         let t4 = Instant::now();
+        let y = if alone { Alone::speech().whole(&y) } else { y };
         lipservice::wav::write(out, &y, SR as u32)?;
+        if let Some(p) = &timing_out {
+            write_text(p, &lipservice::timing::alone_json(named.as_deref().unwrap_or(""), &y, &told.timing, None, None))?;
+        }
         if let Some(p) = &plan_out {
             write_text(p, &(plan + &part(&st)?))?;
         }
@@ -734,6 +751,9 @@ fn say(args: &[String]) -> Result<()> {
             (t4 - t1).as_secs_f64() / secs
         );
         return Ok(());
+    }
+    if timing_out.is_some() {
+        return Err(Error("--timing goes with --stream: it is gathered as the passage is said".into()));
     }
     let t2 = t_text;
     let (y, frames, t3) = match back {
@@ -780,6 +800,7 @@ fn say(args: &[String]) -> Result<()> {
         }
     };
     let t4 = Instant::now();
+    let y = if alone { Alone::speech().whole(&y) } else { y };
     lipservice::wav::write(out, &y, SR as u32)?;
     let secs = y.len() as f64 / SR as f64;
     let ms = |a: Instant, b: Instant| (b - a).as_secs_f64() * 1e3;
@@ -892,8 +913,23 @@ fn parts(
     })
 }
 
+/// --diction was a switch: its rules are the set sung.
+fn no_diction(rest: &mut Vec<String>) -> Result<()> {
+    if switch(rest, "--diction")? {
+        return Err(Error("--diction: no such option; diction is written in the song (%diction) or a --rules file".into()));
+    }
+    Ok(())
+}
+
+/// --for NAME,..: who sings, for the diction's for=: the first the voice, the rest tags.
+fn who_flag(rest: &mut Vec<String>) -> Result<Who> {
+    let Some(v) = value_flag(rest, "--for", "a voice's name, and tags after commas")? else { return Ok(Who::default()) };
+    let mut names = v.split(',').map(str::to_string);
+    Ok(Who { track: None, voice: names.next(), tags: names.collect() })
+}
+
 /// The style sing's flags give.
-fn style_of(f: &Flags, diction: bool, motion: Option<Motion>, seed: u64) -> Result<Style> {
+fn style_of(f: &Flags, who: Who, motion: Option<Motion>, seed: u64) -> Result<Style> {
     let glide = f.get("--glide").unwrap_or(9.0);
     if !(glide >= 1.0 && glide.fract() == 0.0) {
         return Err(Error(format!(
@@ -910,7 +946,7 @@ fn style_of(f: &Flags, diction: bool, motion: Option<Motion>, seed: u64) -> Resu
         dynamics: f.get("--dynamics").unwrap_or(0.0) as f32,
         consonants: f.get("--consonants").unwrap_or(1.0) as f32,
         breathiness: f.get("--breathiness").unwrap_or(1.0) as f32,
-        diction,
+        who,
         motion,
         motion_scale: f.get("--motion-scale").unwrap_or(1.0) as f32,
         seed,
@@ -948,13 +984,19 @@ fn sing(args: &[String]) -> Result<()> {
     let (voc, vm) = if Vox::is(&vw) { (None, Some(vw)) } else { (Some(Vocoder::load(&vw)?), None) };
     let mut ph = phonemizer(&args[3], &args[4])?;
     let out = &args[5];
-    let song = Song::parse(
-        &std::fs::read_to_string(&args[6]).map_err(|e| Error(format!("{}: {e}", args[6])))?,
-    )
-    .map_err(|e| Error(format!("{}: {}", args[6], e.0)))?;
+    let song_text = read_text(&args[6])?;
     let mut rest = args[7..].to_vec();
+    let rules = match file_flag(&mut rest, "--rules")? {
+        Some(p) => Rules::file(&read_text(&p)?).map_err(|e| Error(format!("{p}: {}", e.0)))?,
+        None => Default::default(),
+    };
+    let song = Song::parse_under(&song_text, rules).map_err(|e| Error(format!("{}: {}", args[6], e.0)))?;
     let (ws, clock) = based(ws, &mut rest, None, if vm.is_some() { &["vox"] } else { &[] })?;
-    let diction = switch(&mut rest, "--diction")?;
+    no_diction(&mut rest)?;
+    let who = who_flag(&mut rest)?;
+    let alone = switch(&mut rest, "--alone")?;
+    let timing_out = file_flag(&mut rest, "--timing")?;
+    let named = value_flag(&mut rest, "--named", "a name")?;
     let shape = file_flag(&mut rest, "--sharpen")?;
     let frames_out = file_flag(&mut rest, "--frames")?;
     let plan_out = file_flag(&mut rest, "--plan")?;
@@ -996,7 +1038,7 @@ fn sing(args: &[String]) -> Result<()> {
         ..
     } = parts(&args[1], ws, clock.as_ref(), None, shape, f.get("--speaker"), f.get("--widen"), 0.0)?;
     let vx = vm.map(|m| worn(m, vox, &args[1])).transpose()?;
-    let style = style_of(&f, diction, motion, seed as u64)?;
+    let style = style_of(&f, who, motion, seed as u64)?;
     let ring = f.get("--ring").unwrap_or(0.0) as f32;
     if !(ring >= 0.0 && ring.is_finite()) {
         return Err(Error(format!("--ring {ring}: 0 or more dB")));
@@ -1032,7 +1074,13 @@ fn sing(args: &[String]) -> Result<()> {
         (None, None) => unreachable!(),
     };
     let t2 = Instant::now();
+    let y = if alone { Alone::song(vx.is_some()).whole(&y) } else { y };
     lipservice::wav::write(out, &y, SR as u32)?;
+    if let Some(p) = &timing_out {
+        let t = lipservice::timing::sung(&tokens, &durations, &lipservice::timing::words_of(&song_text)?, &notes, &lf0, &vuv)?;
+        let zero = (part::LEAD * part::SR).round() as i64;
+        write_text(p, &lipservice::timing::alone_json(named.as_deref().unwrap_or(""), &y, &t, Some(format!("{}", song.bpm)), Some(zero)))?;
+    }
     if let Some(p) = &frames_out {
         let text: String = lf0.iter().zip(&vuv).map(|(l, v)| format!("{l}\t{v}\n")).collect();
         std::fs::write(p, format!("lf0\tvuv\n{text}")).map_err(|e| Error(format!("{p}: {e}")))?;
@@ -1086,7 +1134,12 @@ fn read_text(path: &str) -> Result<String> {
 fn roll(args: &[String]) -> Result<()> {
     let mut ph = phonemizer(&args[1], &args[2])?;
     let mut rest = args[6..].to_vec();
-    let diction = switch(&mut rest, "--diction")?;
+    no_diction(&mut rest)?;
+    let rules = match file_flag(&mut rest, "--rules")? {
+        Some(p) => Rules::file(&read_text(&p)?).map_err(|e| Error(format!("{p}: {}", e.0)))?,
+        None => Default::default(),
+    };
+    let who = who_flag(&mut rest)?;
     let join = flags(&rest, &["--join"])?.get("--join").unwrap_or(0.0);
     let (mut bpm, mut keys, mut pedal) = (None, Vec::new(), Vec::new());
     for (i, raw) in read_text(&args[3])?.lines().enumerate() {
@@ -1105,9 +1158,9 @@ fn roll(args: &[String]) -> Result<()> {
         }
     }
     let bpm = bpm.ok_or_else(|| Error(format!("{}: no bpm line", args[3])))?;
-    let song = part::roll(bpm, 0.0, &keys, &read_text(&args[4])?, &pedal, join, &mut |items, k| part::syllables(&mut ph, diction, items, k))?;
+    let song = part::roll(bpm, 0.0, &keys, &read_text(&args[4])?, &pedal, join, &mut |items, k| part::syllables(&mut ph, &rules, &who, items, k))?;
     write_text(&args[5], &song)?;
-    println!("{}: {} notes under {} words", args[5], keys.len(), song.lines().filter(|l| !l.starts_with("bpm ") && !l.starts_with("rest ")).count());
+    println!("{}: {} notes under {} words", args[5], keys.len(), song.lines().filter(|l| !l.starts_with('%')).count());
     Ok(())
 }
 
@@ -1123,7 +1176,12 @@ fn perform(args: &[String]) -> Result<()> {
     let text = read_text(&args[6])?;
     let mut rest = args[7..].to_vec();
     let (ws, clock) = based(ws, &mut rest, None, if vm.is_some() { &["vox"] } else { &[] })?;
-    let diction = switch(&mut rest, "--diction")?;
+    no_diction(&mut rest)?;
+    let rules = match file_flag(&mut rest, "--rules")? {
+        Some(p) => Rules::file(&read_text(&p)?).map_err(|e| Error(format!("{p}: {}", e.0)))?,
+        None => Default::default(),
+    };
+    let who = who_flag(&mut rest)?;
     let dry = switch(&mut rest, "--dry")?;
     let together = switch(&mut rest, "--together")?;
     let performed = file_flag(&mut rest, "--performed")?;
@@ -1161,15 +1219,15 @@ fn perform(args: &[String]) -> Result<()> {
         return Err(Error(format!("--give {}: a share over 0, up to 1", give.unwrap())));
     }
     // check the flags before the song is planned
-    style_of(&f, diction, motion.clone(), seed)?;
+    style_of(&f, who.clone(), motion.clone(), seed)?;
     // the notes set the pitch: a voice's register shift does not apply
     let Parts { name, score, sharpen, speaker, vox, .. } = parts(&args[1], ws, clock.as_ref(), None, None, None, None, 0.0)?;
     let vx = vm.map(|m| worn(m, vox, &args[1])).transpose()?;
     let asked = Part { song: &text, sex, seed, at, shift: f.get("--shift").unwrap_or(0.0), jitter, detune, spread, breath };
     let t1 = Instant::now();
-    let p = part::perform_as(&asked, Manner { together, give }, lib.as_ref().map(|l| &l.0), |text, shift| {
-        let style = Style { shift: shift as f32, ..style_of(&f, diction, motion.clone(), seed)? };
-        let song = if together { Song::parse(&part::clocked(text)?)? } else { Song::parse(text)? };
+    let p = part::perform_as(&asked, Manner { together, give, wants: &[] }, lib.as_ref().map(|l| &l.0), |text, shift| {
+        let style = Style { shift: shift as f32, ..style_of(&f, who.clone(), motion.clone(), seed)? };
+        let song = Song::parse_under(&if together { part::clocked(text)? } else { text.to_string() }, rules.clone())?;
         let plan = lipservice::sing::plan(&score, &mut ph, &song, speaker, &style)?;
         let rests = plan.rests();
         Ok((plan, rests))
@@ -1296,6 +1354,8 @@ fn run(args: &[String]) -> Result<()> {
             QUIET.store(true, Ordering::Relaxed);
             simple::speak(&args[0], args, |e| if e[0] == "say" { say(e) } else { sing(e) })
         }
+        Some("choir") => simple::choir(args),
+        Some("choirs") => simple::choirs(args),
         Some("voices") => simple::voices(args),
         Some("fetch") => simple::fetch(args),
         Some("--version") if args.len() == 1 => {

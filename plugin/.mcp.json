@@ -2,7 +2,7 @@
   "mcpServers": {
     "lipservice": {
       "command": "uvx",
-      "args": ["lipservice@0.1.1", "mcp"],
+      "args": ["lipservice@0.2.0", "mcp"],
       "env": {"LIPSERVICE_OUT": "${user_config.sounds}"}
     }
   }

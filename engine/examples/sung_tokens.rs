@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Giles Hall
 
 //! A song's tokens as sung: frames each, and the envelope's mean log power a frame, dB about the
-//! loudest frame: cargo run --release --example sung_tokens VOICE.lsw G2P.lsw LEXICON.lsw SONG.txt [--diction]
+//! loudest frame: cargo run --release --example sung_tokens VOICE.lsw G2P.lsw LEXICON.lsw SONG.txt
 use lipservice::front::{self, Phonemizer};
 use lipservice::g2p::G2p;
 use lipservice::lexicon::Lexicon;
@@ -30,7 +30,7 @@ fn main() {
         dynamics: 0.0,
         consonants: 1.0,
         breathiness: 1.0,
-        diction: a.get(5).is_some_and(|s| s == "--diction"),
+        who: Default::default(),
         motion: None, motion_scale: 1.0,
         seed: 0,
     };

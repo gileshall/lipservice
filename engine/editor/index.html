@@ -8,39 +8,30 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>lipservice: a score</title>
 <link rel="stylesheet" href="editor.css">
+<link rel="stylesheet" href="menu.css">
 </head>
 <body>
 <header>
+  <nav id="menus" class="desk" aria-label="the editor's menus"></nav>
   <input id="title" placeholder="the score's name" aria-label="the score's name">
-  <span class="gap"></span>
-  <button id="new">New</button>
-  <button id="open">Open</button>
-  <select id="examples" aria-label="examples"></select>
-  <button id="save-score" title="Save the whole score: every singer and the mix (cmd S)">Save</button>
-  <button id="save-part" title="Save only this singer's part">Save part</button>
-  <button id="save-midi" title="Save this singer's part as a MIDI file">Save MIDI</button>
-  <input id="file" type="file" accept=".score,.part,.txt,.mid,.midi,text/plain,audio/midi" aria-label="a file to open" hidden>
+  <button id="link-before" hidden title="The score you had before this link opened another. Undo brings it back too">Back to my score</button>
+  <button id="save-sound" hidden title="Save the whole score as it sounds: every singer and the mix, as a WAV file (cmd shift S). Press again while it is made to stop it">Save sound</button>
+  <span id="sound-ready" hidden><a id="sound-save" class="button" title="The score as it was when Save sound was pressed">Save</a><button id="sound-share" hidden title="Send the sound file to another app">Share</button></span>
+  <select id="examples" class="hand" aria-label="examples"></select>
+  <button id="copy-link" class="hand" title="A link that opens this score in the editor, to send to someone">Share link</button>
+  <input id="file" type="file" accept=".score,.part,.txt,.mid,.midi,.wav,text/plain,audio/midi,audio/wav" aria-label="a file to open" hidden>
   <span class="gap"></span>
   <button id="sing" title="Sing the score from the marker in the ruler (space)">Sing</button>
   <button id="stop" title="Stop singing (space)">Stop</button>
   <button id="loop" aria-pressed="false" title="Loop the stretch marked in the ruler (O)">Loop</button>
-  <button id="click" aria-pressed="false" title="Metronome: a click on each beat (K)">Click</button>
-  <span id="click-volume"></span>
-  <label class="tempo-label">tempo</label><span id="tempo"></span>
-  <span class="gap"></span>
-  <button id="undo">Undo</button>
-  <button id="redo">Redo</button>
+  <button id="record" aria-pressed="false" title="Record: while the score sings, what is played (Keys, or MIDI in) goes into this singer where it is heard. Each take is one step of Undo">Record</button>
+  <span id="tempo" title="The tempo where Sing starts"></span>
   <span class="gap"></span>
   <button id="draw" aria-pressed="false" title="Draw: one press on an empty spot adds a note (D)">Draw</button>
-  <label for="snap" title="Notes start and end on this fraction of a beat">Snap</label>
-  <select id="snap"></select>
+  <label for="snap" class="desk" title="Notes start and end on this fraction of a beat">Snap</label>
+  <select id="snap" title="Notes start and end on this fraction of a beat"></select>
   <span class="gap"></span>
-  <button id="zoom-out" title="Zoom out in time (-)">Narrower</button>
-  <button id="zoom-in" title="Zoom in in time (+)">Wider</button>
-  <button id="fit" title="Fit every note in view (F)">Fit</button>
-  <button id="others" aria-pressed="true" title="Show the other singers' notes behind this one's (G)">Others</button>
-  <span class="gap"></span>
-  <button id="side-toggle" aria-pressed="true" title="Show or hide the panel on the right">Panel</button>
+  <span id="undo-group" class="group"><button id="undo" title="Undo (cmd Z)">Undo</button><button id="redo" class="desk" title="Redo (cmd shift Z)">Redo</button><button id="fit" class="hand" title="Fit every note in view (F)">Fit</button><button id="side-toggle" class="desk" aria-pressed="true" title="Show or hide the panel on the right (P)">Panel</button></span>
 </header>
 <nav id="tabs" aria-label="the singers, and the mixer"></nav>
 <div id="roll">
@@ -49,8 +40,11 @@
 </div>
 <section id="mixer" hidden></section>
 <aside id="side">
-  <h2 class="desk">Note</h2>
-  <div class="rows desk">
+  <section class="fold desk" id="note-part">
+  <h2><button class="fold-head" id="fold-note-head" aria-expanded="true" aria-controls="fold-note">Note<span class="fold-sum" id="note-sum"></span></button></h2>
+  <div class="fold-body" id="fold-note">
+  <div id="n-none" class="said">No note chosen: click one, or double click an empty spot to add one.</div>
+  <div class="rows" id="n-rows">
     <label title="The beat the note starts on">start</label><span id="n-at"></span>
     <label title="How long the note is, in beats">beats</label><span id="n-beats"></span>
     <label title="The note's name, like C4, with cents where it is off: E4+14">pitch</label><span id="n-pitch"></span>
@@ -58,78 +52,125 @@
     <label title="How fast the key was let go, 0 to 127. Kept in the file and in MIDI; the singer does not use it yet">release</label><span id="n-release"></span>
     <label for="n-lyric" title="What is sung on the note. End it with - when the word goes on: Ma- ry. Use _ to hold the syllable before.">syllable</label><input id="n-lyric">
   </div>
-  <div id="n-said" class="said desk"></div>
+  <div id="n-said" class="said"></div>
+  </div>
+  </section>
 
-  <div id="singer-part">
-  <h2>Singer</h2>
+  <section class="fold" id="singer-part">
+  <h2><button class="fold-head" id="fold-singer-head" aria-expanded="true" aria-controls="fold-singer">Singer<span class="fold-sum" id="singer-sum"></span></button></h2>
+  <div class="fold-body" id="fold-singer">
+  <div id="s-follows" class="follows" hidden><span id="s-follows-text"></span> <button id="s-unlink" title="Its notes its own from now on: a change to the singer it follows is no longer its">Unlink</button></div>
   <div class="rows">
     <label for="s-voice">voice</label><select id="s-voice" class="wide"></select>
-    <label title="Which singer of this voice: change it for other timing, pitch and breaths">seed</label><span id="s-seed"></span>
+    <label for="s-way" title="A way to sing: all the settings below at once, named by what they do. The voice and the seed stay">way</label><select id="s-way" class="wide"></select>
+    <label title="Which singer of this voice: change it for other timing, pitch and breaths">seed</label><span class="wide seed-row"><span id="s-seed"></span><button id="s-another" class="desk" title="The next singer of this voice: its own vibrato, timing and breaths">Another singer</button></span>
     <label title="Moves every note up or down, in semitones">shift</label><span id="s-shift"></span>
+  </div>
+  <div id="s-said" class="said"></div>
+  <h3 class="desk"><button class="fold-head sub" id="fold-how-head" aria-expanded="false" aria-controls="fold-how">How it sings<span class="fold-sum" id="how-sum"></span></button></h3>
+  <div class="fold-body rows" id="fold-how">
     <label title="A gap between words this short, in beats, is sung through with no rest">join</label><span id="s-join"></span>
     <label title="How long the pitch takes to move from one note to the next, in hundredths of a second">glide</label><span id="s-glide"></span>
     <label title="How much the singer shapes loudness unasked: high notes louder, long notes swelled. 0 for none">dynamics</label><span id="s-dynamics"></span>
     <label title="How much breath noise is in the sung vowels">breathiness</label><span id="s-breathiness"></span>
+    <label for="s-diction" title="Sung diction: every vowel is stressed">diction</label><input id="s-diction" type="checkbox">
     <label for="s-motion" title="How the pitch moves on a held note: straight, vibrato or wide vibrato, or - to use the vibrato drawn under the notes">motion</label><select id="s-motion"><option value="-">- (drawn)</option><option>straight</option><option>vibrato</option><option>wide</option></select>
     <label title="How large that movement is: 1 is the motion's own size">sway</label><span id="s-sway"></span>
     <label title="How far each phrase and note may land off the beat, in hundredths of a second">jitter</label><span id="s-jitter"></span>
     <label title="How far off pitch the singer may be, in cents">detune</label><span id="s-detune"></span>
     <label title="How far off the whole part may start, in seconds">spread</label><span id="s-spread"></span>
     <label title="The chance of a breath before a phrase, 0 to 1">breath</label><span id="s-breath"></span>
-    <label for="s-diction" title="Sung diction: every vowel is stressed">diction</label><input id="s-diction" type="checkbox">
   </div>
-  <div id="s-said" class="said"></div>
+  <h3 class="makers-head"><button class="fold-head sub" id="fold-makers-head" aria-expanded="false" aria-controls="fold-makers">New singers from this one</button></h3>
+  <div class="fold-body makers" id="fold-makers">
+    <button id="make-harmony" title="A new singer singing this line a third above, or as far as is chosen (H)"><span class="desk">Harmony</span><span class="hand">Add a harmony</span></button>
+    <button id="make-round" title="More singers singing this line, each coming in after the one before"><span class="desk">Round or canon</span><span class="hand">Make it a round</span></button>
+    <button id="make-double" class="desk" title="Another of this voice on the same notes, with its own seed, following this singer">Double</button>
+    <button id="make-octave" class="desk" title="A new singer singing this line an octave away, following this singer">Octave</button>
+    <button id="make-section" class="desk" title="More of this voice on the same notes, spread across, following this singer">Section</button>
+    <button id="make-echoes" class="desk" title="More of this voice singing the line again a little later, quieter">Echoes</button>
+    <button id="make-hocket" class="desk" title="The words handed out in turn among this singer and new ones">Hocket</button>
+    <button id="make-divisi" class="desk" title="Notes that sound together dealt out to singers, a line each">Split a chord</button>
+    <button id="make-drone" class="desk" title="A new singer holding the key's tonic or fifth under the line">Drone</button>
+    <button id="make-scat" class="desk" title="Scat syllables under the notes with no words">Scat</button>
+    <button id="make-stagger" class="desk" title="This singer and those following it in time take turns to breathe">Stagger breaths</button>
   </div>
+  </div>
+  </section>
 
-  <div id="sound-part">
-  <h2>Sound</h2>
+  <section class="fold desk" id="key-part">
+  <h2><button class="fold-head" id="fold-key-head" aria-expanded="false" aria-controls="fold-key">Key<span class="fold-sum" id="key-sum"></span></button></h2>
+  <div class="fold-body" id="fold-key">
+  <div class="rows">
+    <label for="key-tonic" title="The key the notes are in: found in them, or a tonic chosen. The roll shows its notes">key</label><select id="key-tonic"></select>
+    <label for="key-scale" title="The key's scale">scale</label><select id="key-scale"></select>
+  </div>
+  <div id="key-said" class="said"></div>
+  <div class="play-row"><button id="scale" aria-pressed="false" title="Scale: notes drawn, dragged and stepped with the arrows land on the key's notes (shift S)">Scale</button><span class="said">notes land on the key's notes</span></div>
+  </div>
+  </section>
+
+  <section class="fold" id="sound-part">
+  <h2><button class="fold-head" id="fold-sound-head" aria-expanded="false" aria-controls="fold-sound">Sound<span class="fold-sum" id="sound-sum"></span></button></h2>
+  <div class="fold-body" id="fold-sound">
   <div class="rows" id="route-row" hidden>
     <span id="route-label" class="label" title="Hifi sounds better; fast is about twice as quick. The choice is kept for the whole site">quality</span><span id="route" class="seg" role="radiogroup" aria-labelledby="route-label" aria-describedby="route-said"></span>
   </div>
   <div id="route-said" class="said" hidden></div>
   <div class="rows desk">
+    <label title="Metronome: a click on each beat (K)">click</label><span class="wide seed-row"><button id="click" aria-pressed="false" title="Metronome: a click on each beat (K)">Click</button><span id="click-volume"></span></span>
     <label title="Milliseconds added to the delay the browser reports for its speaker">speaker late</label><span id="delay"></span>
   </div>
-  <div class="said desk">If the moving line and the sound are out of step, change this.</div>
+  <div class="said desk">If the moving line and the sound are out of step, change speaker late.</div>
   <div id="delay-said" class="said desk"></div>
+  <button id="sound-make" class="hand" title="The whole score as it sounds, as a WAV file to keep or send">Save as sound</button>
   </div>
+  </section>
 
-  <div id="words-part">
-  <h2>Words</h2>
+  <section class="fold desk" id="play-part">
+  <h2><button class="fold-head" id="fold-play-head" aria-expanded="false" aria-controls="fold-play">Play in<span class="fold-sum" id="play-sum"></span></button></h2>
+  <div class="fold-body" id="fold-play">
+  <div class="play-row">
+    <button id="midi-open" title="Play from a MIDI keyboard: the browser asks whether this page may have MIDI">MIDI in</button>
+    <select id="midi-input" hidden aria-label="the MIDI input played from"></select>
+  </div>
+  <div class="play-row">
+    <button id="keys-play" aria-pressed="false" title="Keys play notes: A W S E D F T G Y H U J K are a keyboard, Z and X an octave down and up; those keys do not do their commands while it is on; with shift, cmd, ctrl or alt they do. Escape gives them back (shift K)">Keys play notes</button>
+    <button id="step" aria-pressed="false" title="Step input: each note played (Keys, or MIDI in) goes in where Sing starts, and Sing starts a step on (shift N)">Step</button>
+  </div>
+  <div class="play-row">
+    <button id="quantize" aria-pressed="true" title="A take's starts and ends go to the snap's step; off, to the tick as played">Quantize takes</button>
+    <button id="take-notes" hidden title="The take's notes, without the wheel this singer cannot sing">Keep the notes only</button>
+  </div>
+  <div id="play-said" class="said"></div>
+  </div>
+  </section>
+
+  <section class="fold" id="words-part">
+  <h2><button class="fold-head" id="fold-words-head" aria-expanded="false" aria-controls="fold-words">Words</button></h2>
+  <div class="fold-body" id="fold-words">
   <textarea id="words" spellcheck="false" aria-label="the words, a syllable a note from the first"></textarea>
   <div id="words-count" class="said"></div>
   <label id="words-all-row" class="check" hidden title="The other singers who sing the same words get these too"><input id="words-all" type="checkbox" checked> every singer with these words</label>
   <button id="words-apply" title="One syllable goes under each note, from the first note on. Split a word with -: lit-tle"><span class="desk">Put these words under the notes</span><span class="hand">Use these words</span></button>
   <div id="words-said" class="said"></div>
   </div>
+  </section>
 
-  <h2 class="desk">The part as text</h2>
-  <textarea id="text" class="desk" spellcheck="false" aria-label="the part as text"></textarea>
-  <button id="text-apply" class="desk" title="Replace this singer's part with the text above">Load this text</button>
-  <div id="text-said" class="said desk"></div>
-
-  <h2 class="desk">Keys</h2>
-  <div id="keys" class="desk">
-    The editor needs a mouse and a keyboard. It does not work by touch.<br>
-    <kbd>double click</kbd> an empty spot to add a note<br>
-    <kbd>drag</kbd> a note to move it; drag its right end to change its length<br>
-    <kbd>Enter</kbd>, or click under a note, to type its syllable. Type several words and they fill the notes that follow<br>
-    <kbd>arrows</kbd> move the selected notes; <kbd>alt</kbd> + left or right makes them shorter or longer<br>
-    <kbd>B</kbd> breath before the note: always, never, or left to the singer<br>
-    <kbd>L</kbd> vibrato point: slide to it, or jump to it<br>
-    <kbd>delete</kbd> removes the selected notes or vibrato point<br>
-    <kbd>space</kbd> sing, or stop<br>
-    <kbd>click</kbd> the ruler to set where singing starts; while it sings, it jumps there. <kbd>Home</kbd> goes back to the start<br>
-    <kbd>drag</kbd> along the ruler to mark a loop; drag its ends to adjust it<br>
-    <kbd>O</kbd> loop on or off<br>
-    <kbd>K</kbd> metronome click on or off<br>
-    <kbd>drag</kbd> a number to change it (hold shift for small steps); <kbd>click</kbd> it to type; <kbd>alt</kbd> + click resets it<br>
-    <kbd>1</kbd> to <kbd>9</kbd> switch singer; <kbd>M</kbd> opens the mixer; <kbd>G</kbd> shows or hides the other singers' notes<br>
-    <kbd>double click</kbd> a tab to rename its singer; the <kbd>+</kbd> tab adds a singer, and with <kbd>shift</kbd> held it copies this one<br>
-    <kbd>scroll</kbd> to move along; <kbd>pinch</kbd> or <kbd>ctrl</kbd> + scroll zooms in time; <kbd>alt</kbd> + scroll zooms in pitch
+  <section class="fold desk" id="text-part">
+  <h2><button class="fold-head" id="fold-text-head" aria-expanded="false" aria-controls="fold-text">The part as text</button></h2>
+  <div class="fold-body" id="fold-text">
+  <textarea id="text" spellcheck="false" aria-label="the part as text"></textarea>
+  <button id="text-apply" title="Replace this singer's part with the text above">Load this text</button>
+  <div id="text-said" class="said"></div>
   </div>
+  </section>
 </aside>
 <footer id="status"></footer>
+<dialog id="keys-help" class="help" aria-label="Keys and mouse">
+  <div class="help-head"><h2>Keys and mouse</h2><button id="keys-close">Close</button></div>
+  <div id="keys"></div>
+</dialog>
 <dialog id="which">
   <p>This file has notes on more than one track or channel. A singer sings one line. Pick the one to open:</p>
   <div id="which-list"></div>

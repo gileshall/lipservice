@@ -20,11 +20,11 @@ fn read(name: &str) -> Weights {
     Weights::read(&format!("{}/testdata/{name}", env!("CARGO_MANIFEST_DIR"))).unwrap()
 }
 
-const SONG: &str = "# a test\nbpm 120\nrest 0.5\nhum D3:2\nW F#3:0.5 E3:0.5 D3:0.5\nrest 1\nO A3:0.5\nR F#3:1\nT D4:2\nrest 0.25\n";
-const SHORT: &str = "bpm 150\nsing A3:1\nsong C4:2+D4:1\n";
+const SONG: &str = "# a test\n%bpm 120\n%rest 0.5\nhum D3:2\nW F#3:0.5 E3:0.5 D3:0.5\n%rest 1\nO A3:0.5\nR F#3:1\nT D4:2\n%rest 0.25\n";
+const SHORT: &str = "%bpm 150\nsing A3:1\nsong C4:2+D4:1\n";
 
 fn style(seed: u64) -> Style {
-    Style { shift: 12.0, vibrato: 0.25, vibrato_hz: 5.5, vibrato_delay: 0.25, vibrato_ramp: 0.2, glide: 9, dynamics: 0.0, consonants: 1.0, breathiness: 1.0, diction: false, motion: None, motion_scale: 1.0, seed }
+    Style { shift: 12.0, vibrato: 0.25, vibrato_hz: 5.5, vibrato_delay: 0.25, vibrato_ramp: 0.2, glide: 9, dynamics: 0.0, consonants: 1.0, breathiness: 1.0, who: Default::default(), motion: None, motion_scale: 1.0, seed }
 }
 
 fn motion() -> Motion {
@@ -42,12 +42,13 @@ fn check(score: &str, voc: &str, sharpen: bool) {
     let variants: Vec<(&str, &str, Style, Option<f32>)> = vec![
         ("plain", SONG, style(0), None),
         ("dressed", SONG, Style { dynamics: 1.0, breathiness: 0.4, consonants: 1.3, ..style(5) }, Some(3.0)),
-        ("diction and ring 0", SONG, Style { diction: true, shift: 0.0, ..style(9) }, Some(0.0)),
+        ("diction and ring 0", SONG, Style { shift: 0.0, ..style(9) }, Some(0.0)),
         ("motion", SHORT, Style { motion: Some(motion()), dynamics: 0.5, ..style(2) }, None),
         ("short", SHORT, Style { vibrato: 0.0, glide: 0, ..style(1) }, Some(2.0)),
     ];
     for (name, text, st, ringdb) in &variants {
-        let song = Song::parse(text).unwrap();
+        let sung = if name.starts_with("diction") { "" } else { "%diction spoken\n" };
+        let song = Song::parse(&format!("{sung}{text}")).unwrap();
         let seed = st.seed;
         let mut whole = sing(&m, &mut ph, &song, 0, st).unwrap();
         let f = &mut whole.score.frames;
@@ -112,7 +113,7 @@ fn picked_up(score: &str, voc: &str, sharpen: bool) {
         Sharpen::new(mu, vec![1.0; m.speakers()], 1.3, 1.0, 1.0).unwrap()
     });
     let mut ph = Phonemizer::new(Lexicon::load(&read("lexicon.lsw")).unwrap(), G2p::load(&read("g2p-i8.lsw")).unwrap()).unwrap();
-    let text = format!("bpm 120\n{}", "rest 0.5\nhum D3:2\nW F#3:0.5 E3:0.5 D3:0.5\nrest 1\nO A3:0.5\nR F#3:1\nT D4:2+E4:1\n".repeat(3));
+    let text = format!("%bpm 120\n{}", "%rest 0.5\nhum D3:2\nW F#3:0.5 E3:0.5 D3:0.5\n%rest 1\nO A3:0.5\nR F#3:1\nT D4:2+E4:1\n".repeat(3));
     let song = Song::parse(&text).unwrap();
     for (st, ringdb) in [(style(0), None), (Style { dynamics: 1.0, breathiness: 0.4, consonants: 1.3, motion: Some(motion()), ..style(5) }, Some(3.0))] {
         let seed = st.seed;

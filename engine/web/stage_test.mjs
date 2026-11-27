@@ -6,9 +6,15 @@
 // choir (the glow and the way to the listener, below, may run out of it), and a tap on a singer asks
 // for that singer alone where the stage's singers can be.
 //
-//     node stage_test.mjs
+//     node stage_test.mjs LIPSERVICE.wasm (the seats are the engine's)
 
+import { readFileSync } from "node:fs";
 import { makeSeats } from "./choir.js";
+import { Engine } from "./lipservice.js";
+import { setEngine } from "./room.js";
+
+if (!process.argv[2]) { console.error("usage: node stage_test.mjs LIPSERVICE.wasm"); process.exit(2); }
+setEngine(await Engine.create(readFileSync(process.argv[2])));
 
 let fails = 0;
 const check = (ok, what) => { console.log(`${ok ? "ok  " : "FAIL"} ${what}`); if (!ok) fails++; };

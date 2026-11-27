@@ -54,12 +54,50 @@ line inside a part by its line in the score).
 | `pan X` | -1 (left) to 1 (right) |
 | `mute 0\|1` | silent in the mix |
 | `solo 0\|1` | while any singer is soloed, only the soloed sound |
+| `follows K [after BEATS] [keys N]` | where it follows another singer (below); none where it does not |
 | `lipservice part 2` ... | the part, to the next `singer` line or the file's end |
 
 A singer's name is its part's title. A score has 1 to 16 singers.
 
 The singers keep one time: every part has the first's `grid`, `tempo` lines and `meter` lines. A
 score where they differ is refused, by the singer.
+
+## Linked singers
+
+A singer may follow another, its leader: a double of it, a section singing with it, a line an
+octave above it, an entry of a round.
+
+```
+singer
+level -4.77
+pan 0.5
+mute 0
+solo 0
+follows 1 after 6 keys 12
+lipservice part 2
+...
+```
+
+| Field | Is |
+|---|---|
+| `K` | the leader's place in the score, the first singer 1 |
+| `after BEATS` | the follower comes this many beats later, a whole number of ticks; none for 0 |
+| `keys N` | each of its notes is N keys up from the leader's, down where N is below 0; none for 0 |
+
+The follower's notes are its leader's, each `after` beats later and `keys` keys up: the same
+starts, lengths, cents, velocities, releases and syllables, in the same order. A key may be
+spelled the follower's own way (`Bb4` for the leader's `A#3` twelve keys up). Its `vibrato` lane
+is its leader's points, each `after` beats later. Its singer's settings (voice, seed, shift and
+the rest), its title and its marks are its own: a double is another singer with its own seed and
+a few cents of its own `shift`, and the singers of a section may breathe at different rests.
+
+The follower's part is written whole all the same, so a part lifted out of a score is a part's
+file, and a reader that does not know `follows` still has every note. A score whose follower's
+notes, words or lane are not its leader's as the line says is refused, by the follower, the
+note or point, and what differs. A leader follows no one, and no singer follows itself.
+
+`follows` says how the singers are linked; it changes nothing that is sung. An editor that
+changes a leader makes its followers again from it.
 
 ## The effects
 

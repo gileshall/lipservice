@@ -17,6 +17,22 @@ pub enum Json {
     Obj(Vec<(String, Json)>),
 }
 
+/// A string as JSON writes it.
+pub fn quote(s: &str) -> String {
+    let mut o = String::with_capacity(s.len() + 2);
+    o.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => o.push_str("\\\""),
+            '\\' => o.push_str("\\\\"),
+            c if (c as u32) < 0x20 => o.push_str(&format!("\\u{:04x}", c as u32)),
+            c => o.push(c),
+        }
+    }
+    o.push('"');
+    o
+}
+
 impl Json {
     pub fn parse(text: &str) -> Result<Json> {
         let mut r = Reader { s: text.as_bytes(), i: 0 };
@@ -300,5 +316,12 @@ mod tests {
         assert!(Json::parse(&"[".repeat(100)).is_err());
         assert!(Json::parse("1.5").unwrap().count().is_err());
         assert!(Json::parse("-1").unwrap().count().is_err());
+    }
+
+    #[test]
+    fn a_string_quoted_reads_back() {
+        for t in ["plain", "say \"ah\"", "back\\slash", "line\nbreak\ttab\u{1}", "Ca' the Yowes", "naïve 歌"] {
+            assert_eq!(Json::parse(&quote(t)).unwrap(), Json::Str(t.to_string()));
+        }
     }
 }

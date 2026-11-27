@@ -14,9 +14,8 @@
 // sing ("choir-reach") waits there for the next word, which wakes it.
 
 import { Engine, SR } from "./lipservice.js";
-import { perform, library, asked, sized } from "./perform.js";
+import { asked } from "./perform.js";
 import { add, within } from "./take.js";
-import { Held } from "./room.js";
 import { routesOf } from "./routes.js";
 import { loader } from "./bundle.js";
 
@@ -97,58 +96,59 @@ const yieldNow = () => new Promise((r) => { waiting.push(r); chan.port2.postMess
 
 // Speech a step at a time. Each part's plan goes out as it starts ("plan", at: the sample of the
 // utterance it starts on), each chunk with the pitch made since the last (Hz a frame of its part,
-// from frame `from`); busy counts the time spent making them. The sound goes out held under the
-// ceiling (Held), its last samples in a chunk of their own.
+// from frame `from`); busy counts the time spent making them. The sound goes out as one voice
+// alone (engine.alone: held under the ceiling), its last samples in a chunk of their own.
 async function say(m) {
   const v = await voice(m.voice);
   if (m.id <= cancelled) return;
   const t = performance.now();
   engine.start(v, m.text, m);
-  const held = new Held();
-  let first = null, n = 0, part = 0, from = 0, busy = performance.now() - t;
-  postMessage({ type: "plan", id: m.id, plan: engine.plan(), at: 0 });
-  for (;;) {
-    const t0 = performance.now();
-    const c = engine.step(m.step);
-    if (c === null) break;
-    const k = engine.part();
-    let plan = null;
-    if (k !== part) {
-      part = k;
-      from = 0;
-      plan = engine.plan();
+  const held = engine.alone(false);
+  try {
+    let first = null, n = 0, part = 0, from = 0, busy = performance.now() - t;
+    postMessage({ type: "plan", id: m.id, plan: engine.plan(), at: 0 });
+    for (;;) {
+      const t0 = performance.now();
+      const c = engine.step(m.step);
+      if (c === null) break;
+      const k = engine.part();
+      let plan = null;
+      if (k !== part) {
+        part = k;
+        from = 0;
+        plan = engine.plan();
+      }
+      const pitch = engine.pitch(from);
+      busy += performance.now() - t0;
+      first ??= performance.now() - t;
+      if (plan) postMessage({ type: "plan", id: m.id, plan, at: n + plan.gap });
+      const len = c.length, frames = pitch.length, y = held.push(c); // the post takes them
+      postMessage({ type: "chunk", id: m.id, samples: y, part, from, pitch, busy }, [y.buffer, pitch.buffer]);
+      from += frames;
+      n += len;
+      await yieldNow();
+      if (m.id <= cancelled) return;
     }
-    const pitch = engine.pitch(from);
-    busy += performance.now() - t0;
-    first ??= performance.now() - t;
-    if (plan) postMessage({ type: "plan", id: m.id, plan, at: n + plan.gap });
-    const len = c.length, frames = pitch.length, y = held.push(c); // the post takes them
-    postMessage({ type: "chunk", id: m.id, samples: y, part, from, pitch, busy }, [y.buffer, pitch.buffer]);
-    from += frames;
-    n += len;
-    await yieldNow();
-    if (m.id <= cancelled) return;
+    const y = held.end();
+    postMessage({ type: "chunk", id: m.id, samples: y, part, from, pitch: new Float32Array(0), busy }, [y.buffer]);
+    postMessage({ type: "done", id: m.id, first, ms: performance.now() - t, busy, secs: n / SR });
+  } finally {
+    held.close();
   }
-  const y = held.end();
-  postMessage({ type: "chunk", id: m.id, samples: y, part, from, pitch: new Float32Array(0), busy }, [y.buffer]);
-  postMessage({ type: "done", id: m.id, first, ms: performance.now() - t, busy, secs: n / SR });
 }
 
-// A song sung alone goes out this far under how it is sung. Through the latent voice singing comes 7 to
-// 9 dB over speech, its highest samples to 7 dB over full scale; at this it meets the limiter as seldom
-// as speech does. Through the vocoder it comes 3 dB quieter and never over full scale, and goes out as loud.
-const ALONE = { hifi: 10 ** (-9 / 20), fast: 10 ** (-6 / 20) };
-
 // A song a step at a time, as sing() renders it whole: its frames and rests first ("sung"), then
-// chunks with their pitch as for speech, held under the ceiling as speech is. m.style is
-// lipservice.js singer()'s, m.motion a pitch motion model's name or none.
+// chunks with their pitch as for speech, going out as one voice alone (engine.alone: let down to
+// speech's level, held under the ceiling). m.style is lipservice.js singer()'s, m.motion a pitch
+// motion model's name or none.
 async function sing(m) {
   const [v, mo] = await Promise.all([voice(m.voice), m.motion ? motion(m.motion) : -1]);
   if (m.id <= cancelled) return;
   const t = performance.now();
   const s = engine.singer(v, m.song, { ...m.style, shift: m.shift, seed: m.seed, motion: mo });
+  let held = null;
   try {
-    const held = new Held();
+    held = engine.alone(true);
     let first = null, n = 0, from = 0, busy = performance.now() - t;
     postMessage({ type: "sung", id: m.id, frames: s.frames, rests: s.rests });
     for (;;) {
@@ -158,7 +158,6 @@ async function sing(m) {
       const pitch = s.pitch(from);
       busy += performance.now() - t0;
       first ??= performance.now() - t;
-      for (let i = 0; i < c.length; i++) c[i] *= ALONE[route];
       const len = c.length, frames = pitch.length, y = held.push(c); // the post takes them
       postMessage({ type: "chunk", id: m.id, samples: y, part: 0, from, pitch, busy }, [y.buffer, pitch.buffer]);
       from += frames;
@@ -170,6 +169,7 @@ async function sing(m) {
     postMessage({ type: "chunk", id: m.id, samples: y, part: 0, from, pitch: new Float32Array(0), busy }, [y.buffer]);
     postMessage({ type: "done", id: m.id, first, ms: performance.now() - t, busy, secs: n / SR });
   } finally {
+    held?.close();
     s.close();
   }
 }
@@ -177,30 +177,12 @@ async function sing(m) {
 // pitch motion models by name (models/motion-NAME.lsw), and the breaths (models/breaths.*)
 const motions = new Map();
 const motion = (name) => once(motions, name, async () => engine.motion(await files.get(`models/motion-${name}.lsw`)));
-let breathLib = null;
-const breaths = () => (breathLib ??= (async () => {
-  const [meta, pcm] = await Promise.all([files.json("models/breaths.json"), files.get("models/breaths.bin")]);
-  if (meta.sr !== SR) throw new Error(`breaths at ${meta.sr} Hz, not ${SR}`);
-  if (pcm.byteLength % 2) throw new Error("breaths.bin: an odd number of bytes");
-  return { lib: library(meta.clips), pcm: new Int16Array(pcm.buffer, pcm.byteOffset, pcm.byteLength / 2) };
-})().catch((e) => { breathLib = null; throw e; }));
-
-// the breaths that fall in samples [s0, s0 + c.length) of a part, added to its chunk c
-function breathe(c, s0, bs, pcm) {
-  const k = 1 / 32767;
-  for (const { clip, at } of bs) {
-    const lo = Math.max(s0, at), hi = Math.min(s0 + c.length, at + clip.n);
-    for (let s = lo; s < hi; s++) c[s - s0] += pcm[clip.at + s - at] * k;
-  }
-}
-
-// A song with the line that has its singer keep the others' clock (sing.rs Song::together), after its bpm.
-function clocked(text) {
-  const lines = text.split("\n"), k = lines.findIndex((l) => l.trim().split(/\s+/)[0] === "bpm");
-  if (k < 0) throw new Error("the song has no bpm line");
-  lines.splice(k + 1, 0, "together");
-  return lines.join("\n");
-}
+let breathing = null;
+// the breaths, loaded into the engine once
+const breaths = () => (breathing ??= (async () => {
+  const [index, sound] = await Promise.all([files.get("models/breaths.json"), files.get("models/breaths.bin")]);
+  engine.breaths(index, sound);
+})().catch((e) => { breathing = null; throw e; }));
 
 // The parts as performed, kept from one choir to the next: a part asked for again as it was is not
 // performed again, and what of it was sung is not sung again, as long as this worker's parts
@@ -221,7 +203,7 @@ const BURST = 3, PACE = 6; // kept sound is given BURST s at once, then PACE tim
 async function choir(m) {
   const vs = await Promise.all(m.parts.map((p) => voice(p.voice)));
   const mo = await Promise.all(m.parts.map((p) => (p.motion ? motion(p.motion) : -1)));
-  const br = m.parts.some((p) => p.breath > 0) ? await breaths() : null;
+  if (m.parts.some((p) => p.breath > 0)) await breaths();
   if (m.id <= cancelled) return;
   if (!Number.isFinite(m.t0) || !Number.isInteger(m.from) || m.from < 0) throw new Error(`choir: the mix from sample ${m.from}, its sample 0 at ${m.t0} s`);
   const keys = m.parts.map(asked), sung = [];
@@ -234,12 +216,10 @@ async function choir(m) {
     for (const [i, p] of m.parts.entries()) {
       if (!performed.has(keys[i])) {
         try {
-          // the song the engine is given has the part's vibrato size written into it, and, for a part that
-          // keeps time with the others, the line that has it place its consonants by the clock they share
-          performed.set(keys[i], Object.assign(perform(p, p.breath > 0 ? br.lib : null, (text, shift) => {
-            const s = engine.singer(vs[i], sized(p.together ? clocked(text) : text, p.vibratoSize ?? 1), { ...p, shift, motion: mo[i] });
-            return { singer: s, rests: s.rests };
-          }), { kept: null, spans: [], where: 0, skip: 0 }));
+          // performed by the engine: its timing, detune and breaths, the song it sings with the part's
+          // vibrato size written into it and, for a part that keeps time with the others, the line that
+          // has it place its consonants by the clock they share
+          performed.set(keys[i], Object.assign(engine.perform(vs[i], p, mo[i]), { kept: null, spans: [], where: 0, skip: 0 }));
         } catch (e) {
           throw new Error(`${p.name}: ${e.message}`);
         }
@@ -259,7 +239,7 @@ async function choir(m) {
     postMessage({
       type: "choir-open", id: m.id, parts: m.parts.map((p) => p.part), at, lens, from: [...made],
       // how each was performed: its breaths ([sample of the part, samples]), cents off its pitch, s off its start
-      sung: sung.map((x, i) => ({ breaths: x.breaths.map((b) => [b.at, b.clip.n]), cents: (x.shift - (m.parts[i].shift ?? 0)) * 100, lag: x.lag })),
+      sung: sung.map((x, i) => ({ breaths: x.breaths, cents: (x.shift - (m.parts[i].shift ?? 0)) * 100, lag: x.lag })),
       kept: sung.map((x) => x.spans.map(([a, b]) => [a, b])), // the samples of each that need no singing
     });
     const live = new Set(sung.keys()), first = [...made], began = performance.now();
@@ -310,7 +290,6 @@ async function choir(m) {
           x.skip -= k;
         }
         x.where += c.length;
-        if (x.breaths.length) breathe(c, a, x.breaths, br.pcm);
         if (x.kept) {
           x.kept.set(c, a);
           add(x.spans, a, a + c.length);

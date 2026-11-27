@@ -75,6 +75,7 @@ impl Weights {
     }
 
     pub fn parse(b: &[u8]) -> Result<Weights> {
+        crate::nn::accel()?;
         let mut r = Reader { b, p: 0 };
         if r.take(4)? != b"LSW1" {
             return err("not an LSW1 file");

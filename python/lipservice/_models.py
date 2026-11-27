@@ -44,11 +44,20 @@ def _answer(n):
 
 
 def manifest():
-    """The served manifest (or LIPSERVICE_MODELS's): the voices and every file's size and hash."""
+    """The manifest kept here (the server's when none is; or LIPSERVICE_MODELS's): the voices and
+    every file's size and hash."""
     global _manifest
     with _lock:
         if _manifest is None:
             _manifest = json.loads(_answer(_engine._library().ls_home_manifest(_get)))
+    return _manifest
+
+
+def update():
+    """The server's manifest read again and kept in place of the one here."""
+    global _manifest
+    with _lock:
+        _manifest = json.loads(_answer(_engine._library().ls_home_update(_get)))
     return _manifest
 
 

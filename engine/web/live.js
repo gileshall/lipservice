@@ -144,6 +144,7 @@ export class Crowd {
   stop() {
     if (this.id === null) return;
     for (const w of this.choir.pool.slice(0, this.w)) w.postMessage({ type: "stop", id: this.id });
+    this.room.close();
     this.id = null;
     this.notes = null;
   }
@@ -232,7 +233,7 @@ export class Crowd {
     if (sang.length > 4) sang.shift();
     this.choir.pool[k].postMessage({
       type: "note", id: this.id, key, voice: this.voiceOf(j).name, at: start / SR, step: STEP,
-      song: `bpm 60\n${t.sex === "F" ? "ah" : "oh"} ${noteName(midi)}:${((end - at) / SR + OVERLAP).toFixed(3)}\n`,
+      song: `%bpm 60\n${t.sex === "F" ? "ah" : "oh"} ${noteName(midi)}:${((end - at) / SR + OVERLAP).toFixed(3)}\n`,
       shift: w.cents / 100, seed: j * 1009 + bar.b, vibrato: P.vibrato, vibratoHz: t.hz, breathiness: P.breath,
     });
   }

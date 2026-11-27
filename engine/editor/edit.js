@@ -7,6 +7,7 @@
 // draws what this holds, and node tests it.
 
 import * as P from "./part.js";
+import * as T from "./theory.js";
 
 export { word } from "./song.js";
 
@@ -162,16 +163,20 @@ export class Editor {
     this.selected = next;
   }
 
-  // each note as f gives it: the note itself, another in its place, or null for none
+  // Each note as f gives it: the note itself, another in its place, or null for none. A mark on a
+  // note's start goes with it: to where it starts now, or out with it where it is gone; a note
+  // still starting there keeps it.
   #notes(f) {
-    const out = [], selected = new Set();
+    const out = [], selected = new Set(), stays = new Set(), went = new Map();
     for (const n of this.part.notes) {
       const m = f(n);
+      if (m !== null && m.at === n.at) stays.add(n.at);
+      else if (!went.has(n.at)) went.set(n.at, m === null ? null : m.at);
       if (m === null) continue;
       out.push(m);
       if (this.selected.has(n)) selected.add(m);
     }
-    this.commit({ ...this.part, notes: P.sort(out) }, selected);
+    this.commit({ ...this.part, notes: P.sort(out), marks: carried(this.part.marks, stays, went) }, selected);
   }
 
   add(at, ticks, key, velocity, release = 64) {
@@ -185,14 +190,15 @@ export class Editor {
   }
 
   // The selected notes `dt` ticks later and `dk` keys higher, as far as the part's start and the
-  // keyboard's ends let them all go.
-  move(dt, dk) {
+  // keyboard's ends let them all go. A name is spelled for `key` (theory.js) where one is given;
+  // without one a flat stays a flat and a sharp a sharp (theory.js moved).
+  move(dt, dk, key = null) {
     const sel = [...this.selected];
     if (!sel.length) return;
     dt = Math.max(dt, -Math.min(...sel.map((n) => n.at)));
     dk = Math.max(-Math.min(...sel.map((n) => P.key(n.pitch))), Math.min(127 - Math.max(...sel.map((n) => P.key(n.pitch))), dk));
     if (!dt && !dk) return;
-    this.#notes((n) => (this.selected.has(n) ? { ...n, at: n.at + dt, pitch: dk ? P.name(P.key(n.pitch) + dk) : n.pitch } : n));
+    this.#notes((n) => (this.selected.has(n) ? { ...n, at: n.at + dt, pitch: dk ? T.moved(n.pitch, dk, key) : n.pitch } : n));
   }
 
   // The selected notes `dt` ticks longer, none shorter than `least`.
@@ -204,6 +210,12 @@ export class Editor {
   set(notes, values) {
     const which = new Set(notes);
     this.#notes((n) => (which.has(n) ? { ...n, ...values } : n));
+  }
+
+  // each of `notes` with the values f gives it, f(note) -> {velocity: ...}
+  change(notes, f) {
+    const which = new Set(notes);
+    this.#notes((n) => (which.has(n) ? { ...n, ...f(n) } : n));
   }
 
   // The words typed, a syllable to each note from `note` on.
@@ -284,6 +296,21 @@ export class Editor {
     this.commit(part, new Set());
     if (saved) this.saved = part;
   }
+}
+
+// The marks after notes changed: `stays`, the ticks where a note still starts; `went`, a tick no
+// note starts on now and where its note went (null: gone). A mark carried onto a tick that has
+// one takes its place. The same list where nothing moved.
+function carried(marks, stays, went) {
+  const moves = (m) => !stays.has(m.at) && went.has(m.at);
+  if (!marks.some(moves)) return marks;
+  const out = new Map();
+  for (const m of marks) if (!moves(m)) out.set(m.at, m);
+  for (const m of marks) {
+    const to = moves(m) ? went.get(m.at) : undefined;
+    if (to !== undefined && to !== null) out.set(to, { ...m, at: to });
+  }
+  return [...out.values()].sort((a, b) => a.at - b.at);
 }
 
 // ---------------------------------------------------------------- the roll

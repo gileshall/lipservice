@@ -185,13 +185,14 @@
     changes are heard at the next Go.</p>
   </details>
   <details><summary>Song format</summary>
-    <p>A line each: <code>bpm 90</code>, <code>rest 0.5</code> (beats), or a word and its notes, one a syllable,
+    <p>A line each. A line that starts with <code>%</code> is an instruction: <code>%bpm 90</code> the tempo, before the
+    first word; <code>%rest 0.5</code> beats of silence. Every other line is a word and its notes, one a syllable,
     <code>NOTE:BEATS</code> (<code>C4</code>, <code>F#3</code>, <code>Bb2</code>), notes joined by <code>+</code> sharing a syllable.
     Lines starting <code>#</code> are comments.</p>
-    <p>A <code>vibrato</code> line between words writes the vibrato's size from that beat on, as a pedal is written beside
-    a part's notes: 1 is the voice's own, 0 a straight tone. <code>vibrato 0</code> jumps to none;
-    <code>vibrato 1.5:3</code> glides to one and a half times over the next 3 beats; several in a line follow one another, so
-    <code>vibrato 0 0:2 2:4 0:2</code> is none, held for 2 beats, grown to twice over 4, gone again over 2. The line takes no
+    <p>A <code>%vibrato</code> line between words writes the vibrato's size from that beat on, as a pedal is written beside
+    a part's notes: 1 is the voice's own, 0 a straight tone. <code>%vibrato 0</code> jumps to none;
+    <code>%vibrato 1.5:3</code> glides to one and a half times over the next 3 beats; several in a line follow one another, so
+    <code>%vibrato 0 0:2 2:4 0:2</code> is none, held for 2 beats, grown to twice over 4, gone again over 2. The line takes no
     time in the song, and the last size holds until the next line. Of a singer's own pitch it sizes the vibrato and leaves
     the slower drift. In a choir each part has its own (Parts as song files); the piece Vibrato, Written shows it. The
     knob "vibrato alone" is what 1 comes to: every size written is multiplied by it.</p>
@@ -295,6 +296,8 @@
 <script type="module">
 import { PASSAGES } from "./passages.js";
 import { Choir } from "./choir.js";
+import { Engine } from "./lipservice.js";
+import { setEngine } from "./room.js";
 import { Deck } from "./deck.js";
 import { Conductor } from "./conduct.js";
 import { CHOIRS, VIBRATO, arrange } from "./choirs.js";
@@ -324,8 +327,8 @@ const SAY = {
 };
 const SING = {
   "Amazing Grace": `# Amazing Grace (New Britain, 1829), first two lines; 3/4
-bpm 90
-rest 0.5
+%bpm 90
+%rest 0.5
 amazing D4:1 G4:2 B4:0.5+G4:0.5
 grace B4:2
 how A4:1
@@ -338,9 +341,9 @@ a B4:0.5+G4:0.5
 wretch B4:2
 like A4:1
 me D5:3
-rest 0.5`,
+%rest 0.5`,
   "Twinkle": `# Twinkle, Twinkle, Little Star (traditional)
-bpm 100
+%bpm 100
 twinkle C4:1 C4:1
 twinkle G4:1 G4:1
 little A4:1 A4:1
@@ -351,7 +354,7 @@ wonder E4:1 E4:1
 what D4:1
 you D4:1
 are C4:2
-rest 0.5`,
+%rest 0.5`,
 };
 
 const CAPTION = {
@@ -499,7 +502,7 @@ const session = "mediaSession" in navigator ? navigator.mediaSession : null;
 session?.setActionHandler("pause", () => halted());
 function nowPlaying(title) {
   if (!session) return;
-  session.metadata = new MediaMetadata({ title, artist: "lipservice", album: "made in your browser" });
+  session.metadata = title ? new MediaMetadata({ title, artist: "lipservice", album: "made in your browser" }) : null;
   session.playbackState = title ? "playing" : "none";
 }
 
@@ -584,6 +587,11 @@ const halted = () => { stop(); unfile(); status("Stopped."); };
 $("stop").onclick = halted;
 
 // ------------------------------------------------------------------ the choir and the crowd
+
+// The choir's mixer and room, and the crowd's, run in an engine on this thread, with no models in it.
+const wasmAt = await fetch("lipservice.wasm", { cache: "no-cache" });
+if (!wasmAt.ok) throw new Error(`lipservice.wasm: ${wasmAt.status} ${wasmAt.statusText}`);
+setEngine(await Engine.create(new Uint8Array(await wasmAt.arrayBuffer())));
 
 // The choir (choir.js): its parts over several workers, mixed here; the conductor puts the sound on
 // the take's tape and the deck plays it.
@@ -1071,7 +1079,7 @@ $("go").onclick = () => {
     const how = singHow.get();
     take.asked = {
       voice: common.voice, seed: common.seed, song: sized(take.text, how.vibrato), shift: take.shift, motion: $("sing-motion").value || null,
-      style: { vibrato: 0.25 * how.sway, motionScale: how.sway, glide: how.glide, dynamics: how.dynamics, breathiness: how.breathiness, diction: $("sing-diction").checked },
+      style: { vibrato: 0.25 * how.sway, motionScale: how.sway, glide: how.glide, dynamics: how.dynamics, breathiness: how.breathiness, diction: $("sing-diction").checked ? [] : ["spoken"] },
     };
     worker.postMessage({ type: "sing", id, ...take.asked });
     nowPlaying((take.text.match(/^#\s*(.+)$/m)?.[1] ?? "a song").slice(0, 60));

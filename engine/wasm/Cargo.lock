@@ -4,11 +4,11 @@ version = 4
 
 [[package]]
 name = "lipservice"
-version = "0.1.1"
+version = "0.2.0"
 
 [[package]]
 name = "lipservice-wasm"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "lipservice",
 ]

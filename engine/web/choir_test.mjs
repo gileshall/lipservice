@@ -2,14 +2,19 @@
 // Copyright (C) 2026 Giles Hall
 
 // The choir's seats and mixing, the tape, the deck's start rule, jumps and changes, and the
-// conductor, against the real player.js and room.js and scripted workers on a virtual clock; no
-// models, no browser. node choir_test.mjs
+// conductor, against the real player.js and room.js (the engine's mixer and room, in the wasm) and
+// scripted workers on a virtual clock; no models, no browser. node choir_test.mjs LIPSERVICE.wasm
+import { readFileSync } from "node:fs";
 import { Choir, Mixer, FADE, SR, REFL_SUM, WARM, makeSeats, coprimeStep, taps, workersFor } from "./choir.js";
-import { Room, BLOCK, TAIL, TRACE } from "./room.js";
+import { Engine } from "./lipservice.js";
+import { Room, BLOCK, TAIL, TRACE, setEngine } from "./room.js";
 import { Take, add, within } from "./take.js";
 import { asked } from "./perform.js";
 import { Deck, XF, LATE } from "./deck.js";
 import { Conductor } from "./conduct.js";
+
+if (!process.argv[2]) { console.error("usage: node choir_test.mjs LIPSERVICE.wasm"); process.exit(2); }
+setEngine(await Engine.create(readFileSync(process.argv[2])));
 
 // player.js as the browser runs it: its port, process() and messages
 let Player = null;

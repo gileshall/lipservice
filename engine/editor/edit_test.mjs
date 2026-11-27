@@ -50,6 +50,66 @@ const brief = (ed) => ed.part.notes.map((n) => `${P.beat(n.at, G)}+${P.beat(n.ti
   check(threw(() => ed.add(0.5, G, 60, 64)) !== null && ed.part === before, "a note off the ticks is refused");
 }
 
+// a name keeps its spelling up and back; a key given spells it for the key
+{
+  const ed = fresh();
+  ed.add(0, G, 70, 80);
+  ed.set([ed.part.notes[0]], { pitch: "Bb4" });
+  ed.select(ed.part.notes);
+  ed.move(0, 1);
+  ed.move(0, -1);
+  check(ed.part.notes[0].pitch === "Bb4", "Bb4 moved up a key and back is Bb4");
+  ed.move(0, -1);
+  check(ed.part.notes[0].pitch === "A4", "and down one more is A4");
+  ed.move(0, 1, { tonic: 11, scale: "major" });
+  check(ed.part.notes[0].pitch === "A#4", "up a key in B major it is A#4");
+}
+
+// a mark on a note's start goes with the note, and out with it
+{
+  const ed = fresh();
+  const a = ed.add(0, G, 60, 80), b = ed.add(2 * G, G, 62, 80), c = ed.add(4 * G, G, 64, 80);
+  ed.mark(2 * G);
+  ed.mark(4 * G);
+  ed.mark(4 * G);
+  ed.mark(7 * G);
+  const marks = () => ed.part.marks.map((m) => `${m.at / G}${m.breath ? "" : " no"}`);
+  check(equal(marks(), ["2", "4 no", "7"]), "a breath on b, a nobreath on c, a breath in the rest after");
+  ed.select([b]);
+  ed.move(-G, 0);
+  check(equal(marks(), ["1", "4 no", "7"]), "b moved a beat earlier: its mark with it, the others where they were");
+  ed.select(ed.part.notes.filter((n) => n.at === 4 * G));
+  ed.remove();
+  check(equal(marks(), ["1", "7"]), "c removed: its mark goes too");
+  check(ed.undo() && equal(marks(), ["1", "4 no", "7"]) && ed.undo() && equal(marks(), ["2", "4 no", "7"]), "each undone with its marks");
+  ed.select([b]);
+  ed.stretch(G);
+  check(equal(marks(), ["2", "4 no", "7"]), "lengthened, it starts where it did: its mark stays");
+  const m0 = ed.part.marks;
+  ed.select([a]);
+  ed.move(0, 3);
+  check(ed.part.marks === m0, "moved up a key: the marks are the same list");
+  // a chord: the note left there keeps the mark
+  ed.add(2 * G, G, 67, 80);
+  ed.select([ed.part.notes.find((n) => n.at === 2 * G && n.pitch === "D4")]);
+  ed.move(G / 2, 0);
+  check(equal(marks(), ["2", "4 no", "7"]), "one note of two on a beat moved: the one left keeps the mark");
+  // a mark carried onto a beat with one takes its place
+  ed.select(ed.part.notes.filter((n) => n.at === 2 * G));
+  ed.move(2 * G, 0);
+  check(equal(marks(), ["4", "7"]), "carried onto a beat that has a mark: it takes that one's place");
+}
+
+// a note's values changed one by one: velocities moved alike keep their differences
+{
+  const ed = fresh();
+  ed.add(0, G, 60, 40);
+  ed.add(G, G, 62, 90);
+  const n = ed.past.length;
+  ed.change(ed.part.notes, (x) => ({ velocity: Math.min(127, x.velocity + 30) }));
+  check(equal(ed.part.notes.map((x) => x.velocity), [70, 120]) && ed.past.length === n + 1 && ed.selected.size === 1, "each changed by its own value, as one change, the choice kept");
+}
+
 // a drag is one change however far it goes, made each time from where it began
 {
   const ed = fresh();

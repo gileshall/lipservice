@@ -78,12 +78,17 @@ cd engine
 cargo test --release --lib --test front --test linear
 ```
 
+`web/`'s tests of the page's stage, room, parts, mixer and a lone voice's level run them through
+the engine, and take the built module:
+
 ```bash
 cd engine/web
-node room_test.mjs
-node stage_test.mjs
-node perform_test.mjs
-node choir_test.mjs
+W=../wasm/target/wasm32-unknown-unknown/release/lipservice_wasm.wasm
+node stage_test.mjs $W
+node room_test.mjs $W
+node perform_test.mjs $W
+node choir_test.mjs $W
+node alone_test.mjs $W
 ```
 
 The other sixteen files in `tests/` hold the engine against the models it was trained as, and
@@ -94,7 +99,7 @@ From a clone, `cargo test --release --lib` passes. The tests under `tests/` read
 that are not published, so most of them fail for a file that is not there.
 
 `web/files_test.mjs` needs `ffmpeg`, `flac` and `lame`. `web/page_smoke.mjs` and
-`web/part_check.mjs` need a built page.
+`web/choir_check.mjs` need a built page.
 
 The package has two checks of its own, run against an installed wheel: `python/tests/check.py`
 (the package and this command line must write the same bytes) and `python/tests/docs.py` (every

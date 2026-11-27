@@ -9,7 +9,9 @@
 // As roll() has it: one note at a time; a note still sounding when the next starts ends there; in
 // a word a note runs to the next note's start; a gap between words of `join` beats or less is no
 // rest, the note before holds it; any other gap is a rest. A part's tempo changes are written
-// flat: the song is at the part's first tempo and each note as many of its beats as it lasts.
+// flat: the song is at one tempo (tempo()) and each note as many of its beats as it lasts.
+// Instructions are lines that start with % (%bpm, %rest, %vibrato); a word line is a word and its
+// notes, so a word may be any word but one that starts with % or #.
 
 import * as P from "./part.js";
 
@@ -25,6 +27,16 @@ export function word(lyrics) {
 
 // Beats as the song text writes them: six places, trailing zeros dropped (perform.js fmt).
 const fmt = (b) => b.toFixed(6).replace(/\.?0+$/, "");
+
+// The tempo a part's song is written at: the engine sings 20 to 400 beats a minute, so the
+// part's first tempo, doubled or halved until it is in that range. The seconds sung are the same
+// whichever: each note is as many of these beats as it lasts.
+export function tempo(part) {
+  let bpm = part.tempo[0].bpm;
+  while (bpm < 20) bpm *= 2;
+  while (bpm > 400) bpm /= 2;
+  return bpm;
+}
 
 // The seconds from the part's start to a tick, through its tempos.
 export function clock(part) {
@@ -74,6 +86,7 @@ export function words(part) {
     w.text = word(w.groups.map((g) => g[0].lyric));
     if (!w.text) stop(w.at, `"${w.groups.map((g) => g[0].lyric).join("")}" has no letters to sing`);
     else if (/\s/.test(w.text)) stop(w.at, `"${w.text}" is more than one word`);
+    else if (/^[%#]/.test(w.text)) stop(w.at, `"${w.text}" starts with ${w.text[0]}: a line of a song that starts so is ${w.text[0] === "%" ? "an instruction" : "a comment"}, not a word`);
   }
   return { words: out, problems };
 }
@@ -99,7 +112,7 @@ export function problems(part) {
 export function song(part) {
   const { words: ws, problems: ps } = words(part);
   if (ps.length) throw Object.assign(new Error(ps.map((p) => p.what).join("\n")), { at: ps[0].at });
-  const grid = part.grid, secs = clock(part), bpm = part.tempo[0].bpm;
+  const grid = part.grid, secs = clock(part), bpm = tempo(part);
   // a tick as millionths of the song's beats
   const g = (tick) => Math.round(secs(tick) * bpm / 60 * 1e6);
   const beats = (a, b) => (g(b) - g(a)) / 1e6;
@@ -123,13 +136,13 @@ export function song(part) {
       ends.set(n, inside || next.at - own <= join ? next.at : Math.min(own, next.at));
     });
   });
-  const out = [`bpm ${fmt(bpm)}`], phrases = [];
+  const out = [`%bpm ${fmt(bpm)}`], phrases = [];
   const pts = part.lanes.vibrato;
   let pos = 0; // the tick written up to
   ws.forEach((w, j) => {
     // a phrase starts with the first word, and with each word after a rest
     const rest = w.at > pos ? beats(pos, w.at) : 0;
-    if (rest > 0) out.push(`rest ${fmt(rest)}`);
+    if (rest > 0) out.push(`%rest ${fmt(rest)}`);
     if (rest > 0 || j === 0) phrases.push({ at: w.at, from: pos });
     // the vibrato from the word's start to the next word's: where it stands, then each point
     const until = ws[j + 1]?.at ?? Infinity;
@@ -157,7 +170,7 @@ export function song(part) {
       }
       [v, at] = [q.value, q.at];
     }
-    if (steps.length) out.push(`vibrato ${steps.join(" ")}`);
+    if (steps.length) out.push(`%vibrato ${steps.join(" ")}`);
     const groups = w.groups.map((group) => group.map((n) => {
       const b = beats(n.at, ends.get(n));
       if (!(b > 0)) throw stop(n.at, "the note is under a millionth of a beat long");
@@ -183,7 +196,7 @@ export function song(part) {
   return { text: out.join("\n") + "\n", bpm, phrases, wants, words: ws.map((w) => ({ text: w.text, at: w.at, syllables: w.groups.length, notes: w.groups.flat() })), notes };
 }
 
-// The beat of the song (the part's first tempo's beats) a tick falls on.
+// The beat of the song (the beats of its tempo()) a tick falls on.
 export function beatOf(part, tick) {
-  return clock(part)(tick) * part.tempo[0].bpm / 60;
+  return clock(part)(tick) * tempo(part) / 60;
 }

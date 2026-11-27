@@ -242,8 +242,8 @@ class _MacQueue:
         # called on the queue's own thread; kept here so they outlive the queue
         self._played = _PLAYED(lambda user, q, buf: None)
         self._changed = _CHANGED(self._running)
-        data, rate = clip._data, clip.rate
-        fmt = _Format(rate, _code("lpcm"), _FLOAT_PACKED, 4, 1, 4, 1, 32, 0)
+        data, rate, ch = clip._data, clip.rate, clip.channels
+        fmt = _Format(rate, _code("lpcm"), _FLOAT_PACKED, 4 * ch, 1, 4 * ch, ch, 32, 0)
         q = c_void_p()
         m.check(m.queue.AudioQueueNewOutput(byref(fmt), self._played, None, None, None, 0, byref(q)), "a queue to play through")
         self._q = q
@@ -256,8 +256,8 @@ class _MacQueue:
                 m.cf.CFRelease(uid)
             m.check(m.queue.AudioQueueAddPropertyListener(q, _QUEUE_RUNNING, self._changed, None), "the queue's listener")
             # a second of sound a buffer
-            for at in range(0, len(data), 4 * rate):
-                part = data[at : at + 4 * rate]
+            for at in range(0, len(data), 4 * ch * rate):
+                part = data[at : at + 4 * ch * rate]
                 buf = POINTER(_Buffer)()
                 m.check(m.queue.AudioQueueAllocateBuffer(q, len(part), byref(buf)), "a buffer of sound")
                 ctypes.memmove(buf.contents.data, part, len(part))

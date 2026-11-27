@@ -3,10 +3,10 @@
 
 """The MCP server: `lipservice mcp`. A model that connects to it can speak and sing.
 
-It speaks the Model Context Protocol over stdin and stdout, a JSON message a line, and offers four
-tools: voices, devices, say and sing. Standard library only.
+It speaks the Model Context Protocol over stdin and stdout, a JSON message a line, and offers six
+tools: voices, devices, choirs, say, sing and choir. Standard library only.
 
-Where the sound of say and sing goes is always said:
+Where the sound of say, sing and choir goes is always said:
 
     device   the id of one of this machine's outputs (the devices tool): played there, and the
              call returns when it has played
@@ -15,7 +15,8 @@ Where the sound of say and sing goes is always said:
     neither  a new file in the server's folder
 
 The server's folder is `--out DIR`, or LIPSERVICE_OUT. Without one, a call that names no device
-and no full path is refused. Nothing is ever played that was not asked for by device.
+and no full path is refused. Nothing is ever played that was not asked for by device. With timing
+true a call also writes what its voices did when, as JSON beside the WAV file.
 
 One clip plays at a time: a second call waits for the first to finish. A call the client cancels
 (notifications/cancelled) stops playing and is not answered. When stdin closes, what is playing
@@ -24,32 +25,35 @@ stops and the server ends.
 
 import json
 import os
+import re
 import sys
 import threading
 import time
 import traceback
 
-from . import MOTIONS, QUALITIES, Error, __version__, _audio, devices, say, sing, voices
+from . import HOW, MOTIONS, QUALITIES, ROOMS, Error, __version__, _audio, choir, choirs, devices, loads, say, sing, voices
 
 # newest first: the one a client asks for if it is here, the newest if it is not
 PROTOCOLS = ("2025-06-18", "2025-03-26", "2024-11-05")
 
-INSTRUCTIONS = """Lip Service says text aloud and sings written scores, in sixteen English voices, on this machine's own CPU.
+INSTRUCTIONS = """Lip Service says text aloud and sings written scores, one voice or a choir of them, in sixteen English voices, on this machine's own CPU.
 
 Three things to hold on to:
 1. You cannot hear what you make. A file that was written is not a song that sounds right. Say what you made and where it is, and let the person listen.
 2. The engine refuses what it cannot say or sing, and says why. Read the refusal, fix that one thing, call again.
 3. Give the person the score along with the song. It is plain text, and they can change it.
 
-say and sing put the sound where you tell them: `device` plays it through one of the machine's outputs (ids from the devices tool) and returns when it has played; `out` writes a WAV file. Play through a device only when the person wants to hear it now."""
+say, sing and choir put the sound where you tell them: `device` plays it through one of the machine's outputs (ids from the devices tool) and returns when it has played; `out` writes a WAV file. Play through a device only when the person wants to hear it now. `timing` true also writes what each voice did when (phones, words, notes, breaths, pitch, loudness, the beat) as JSON beside the WAV file, for lip sync and other pictures."""
 
 _WHERE = {
     "device": {"type": "string", "description": "Play it through this output: an id from the devices tool. The call returns when it has played."},
-    "out": {"type": "string", "description": "Write a WAV file (mono, 24 kHz) here. A full path, or a name inside the server's own folder if it has one. A file already there is replaced. May be given with device."},
+    "out": {"type": "string", "description": "Write a WAV file (24 kHz; mono, a choir's stereo) here. A full path, or a name inside the server's own folder if it has one. A file already there is replaced. May be given with device."},
+    "timing": {"type": "boolean", "description": "Also write what each voice did when, as JSON beside the WAV file, under its name with .json: phones, words, sung notes, breaths, pitch and loudness by voice, in samples, and a song's tempo. A call that only plays writes no file and is refused.", "default": False},
 }
+_QUALITY = {"type": "string", "enum": list(QUALITIES), "description": "hifi sounds best; fast is quicker.", "default": "hifi"}
 _VOICE = {
     "voice": {"type": "string", "description": "Who: a name from the voices tool. ada, cora, eve, gwen, ivy, kate, mae, opal are female; ben, dev, finn, hal, jack, leo, ned, pete are male.", "default": "ada"},
-    "quality": {"type": "string", "enum": list(QUALITIES), "description": "hifi sounds best; fast is quicker.", "default": "hifi"},
+    "quality": _QUALITY,
     "seed": {"type": "integer", "description": "The same seed gives the same reading; another gives another take.", "default": 0},
 }
 
@@ -61,25 +65,45 @@ The answer says what was made, how many seconds of sound it is, and where it wen
 
 _SING = """Sings a score in one of the voices. The score is text, one word a line with the notes it is sung on:
 
-bpm 100
+%bpm 100
 twinkle C4:1 C4:1
 twinkle G4:1 G4:1
 little A4:1 A4:1
 star G4:2
-rest 1
+%rest 1
 
-- `bpm N`: the tempo, beats a minute. Exactly once.
+- A line that starts with % is an instruction. Every other line is a word to sing, so rest and bpm are words like any other.
+- `%bpm N`: the tempo, beats a minute, 20 to 400. Exactly once, before the first word.
 - `WORD GROUP GROUP ...`: one bare word (no punctuation, no hyphens), then one group for each syllable of it.
 - A group is NOTE:BEATS, or several joined by + to move one syllable through several notes: `B4:0.5+G4:0.5`.
 - NOTE is a capital letter A to G, then # or b if any, then the octave (C4 is middle C), or a MIDI number 0 to 127.
 - BEATS is any number above zero.
-- `rest BEATS`: silence. Put one wherever the singer would breathe.
-- `vibrato SIZE` or `vibrato SIZE:BEATS ...`: the vibrato's size from here on (0 straight, 1 the voice's own), jumping or gliding there. Takes no time.
-- A line starting with # is a comment. To sing the word rest, bpm or vibrato, capitalise it.
+- `%rest BEATS`: silence. Put one wherever the singer would breathe.
+- `%vibrato SIZE` or `%vibrato SIZE:BEATS ...`: the vibrato's size from here on (0 straight, 1 the voice's own), jumping or gliding there. Takes no time.
+- `%diction RULE`: a rule for how sounds are sung, as the diction argument takes them, before the first word. `WORD{N,AA,~AY:200,T} D4:3` writes one word's sounds where it stands.
+- A line starting with # is a comment.
 
-One voice, one note at a time, one tempo, English words. The engine counts syllables as it says the word and refuses a miscount with the answer in it: `every: 3 syllables (EH1 V ER0 IY0), 2 notes` means one group for each sound ending in a digit. Often miscounted: every 3, family 3, fire 2, hour 2, heaven 2, world 1. When the tune has more notes than syllables, join notes with +; when the word has more syllables, divide a note between them. A note too short for its consonants is refused too: lengthen it or lower the bpm. Fix one refusal a call.
+One voice, one note at a time, one tempo, English words. The engine counts syllables as it says the word and refuses a miscount with the answer in it: `every: 3 syllables (EH1 V AH1 R IY1), 2 notes` means one group for each sound ending in a digit. Often miscounted: every 3, family 3, fire 2, hour 2, heaven 2, world 1. When the tune has more notes than syllables, join notes with +; when the word has more syllables, divide a note between them. A note too short for its consonants is refused too: lengthen it or lower the bpm. Fix one refusal a call.
 
 The song is sung where it is written: for a male voice keep the score and give shift -12. It lasts its beats times 60 over the bpm, plus about a quarter of a second: check the seconds in the answer against that."""
+
+_CHOIR = """Sings a piece for several voices at once: each singer performed as a person sings (a little off the beat and the pitch, breaths taken in the rests), seated left to right, and the whole put through a room, in stereo.
+
+`piece` is a name from the choirs tool, or a choir you write, as JSON text:
+
+{"room": "card",
+ "style": {"glide": 9, "dynamics": 1.0, "breathiness": 0.6, "breath": 0.8},
+ "parts": [
+  {"name": "High", "voice": "cora", "song": "%bpm 90\nsing C5:1\nwith B4:1\nme C5:2\n%rest 1\n"},
+  {"name": "Low", "voice": "ben", "song": "%bpm 90\nsing E4:1\nwith G4:1\nme E4:2\n%rest 1\n"}]}
+
+- `room`: card, drier, driest or bare, from most room to none.
+- `style`: glide, dynamics and breathiness must be there, as the sing tool has them. Also breath (the chance of a breath in each rest, 0 to 1), jitter (hundredths of a second a note may move by), detune (cents a singer may sit off), diction (rules for how sounds are sung, a list of lines as the sing tool takes them, none needed; `spoken` turns a singer's vowels off; a line may start for=NAME, a part's name, its voice or one of its tags) and motion (straight, vibrato or wide).
+- `parts`: a singer each, seated left to right in this order: a name, a voice (a name from the voices tool) and a song, a score as the sing tool takes it. Give every part the same bpm, and rests where it waits for the others. A part may also say gain (times, 1) and at (seconds into the piece it starts).
+
+Write every part where a woman would sing it: a man's voice sings its part an octave down by itself. So a bass line for ben is written around C4 and sounds around C3.
+
+A part is refused as the sing tool refuses a song, with the part's name on it. Get each part to sing alone on fast first, then put them together. It lasts its beats, plus about four seconds for the room to die away."""
 
 # what each tool does to the world, for a client deciding what to ask the person first. None reaches outside this machine.
 _READS = {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
@@ -99,6 +123,13 @@ TOOLS = [
         "title": "List the sound outputs",
         "annotations": {"title": "List the sound outputs", **_READS},
         "description": "The sound outputs of the machine this server runs on: each one's id (what say and sing take as device), its name, and which is the system's default. Two outputs can share a name; the id tells them apart.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "choirs",
+        "title": "List the choirs",
+        "annotations": {"title": "List the choirs", **_READS},
+        "description": "The pieces for several voices that the choir tool sings by name: rounds, folk songs in parts, a barbershop tag.",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
     {
@@ -139,10 +170,37 @@ TOOLS = [
                 "glide": {"type": "integer", "description": "Hundredths of a second the pitch takes between notes.", "default": 9},
                 "dynamics": {"type": "number", "description": "How far loudness and brightness follow the melody. 0 is none.", "default": 0.0},
                 "breathiness": {"type": "number", "description": "The breath in the sung vowels, times.", "default": 1.0},
-                "diction": {"type": "boolean", "description": "Every vowel sung as a stressed one.", "default": False},
+                "diction": {"type": "array", "items": {"type": "string"}, "description": "Rules for how sounds are sung, a line each; none are needed. A song is sung with a singer's vowels: each stressed, a long held \"eye\" held open and closed late; `spoken` turns that off. A rule is [word=WORD] [SOUND when..] -> WHAT, as `ER held>=240 -> AH ~ER` or `word=mild -> M AY AH L D`."},
+                "tags": {"type": "array", "items": {"type": "string"}, "description": "Names the singer goes by, for a rule that starts for=NAME."},
                 **_WHERE,
             },
             "required": ["score"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "choir",
+        "title": "Sing a piece for several voices",
+        "annotations": {"title": "Sing a piece for several voices", **_MAKES},
+        "description": _CHOIR,
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "piece": {"type": "string", "description": "A name from the choirs tool, or a choir as JSON text."},
+                "quality": _QUALITY,
+                "seed": {"type": "integer", "description": "The singers' draws: the same seed gives the same performance; another gives another take. Left out, the piece's own."},
+                "room": {"type": "string", "enum": list(ROOMS), "description": "The room it is sung in, in place of the piece's own."},
+                "motion": {"type": "string", "enum": [*MOTIONS, "none"], "description": "A trained singer's pitch movement for every part, or none for the plain vibrato, in place of the piece's own."},
+                "sway": {"type": "number", "description": f"The singers' vibrato and drift against their own size, {HOW['sway'][0]:g} to {HOW['sway'][1]:g}. 1 is the piece's own."},
+                "vibrato": {"type": "number", "description": f"The vibrato alone against its own size, {HOW['vibrato'][0]:g} to {HOW['vibrato'][1]:g}."},
+                "loose": {"type": "number", "description": f"How far off the beat and the pitch each singer is, {HOW['loose'][0]:g} to {HOW['loose'][1]:g}. 1 is the piece's own, 0 exactly together."},
+                "glide": {"type": "integer", "description": f"Hundredths of a second the pitch takes between notes, {HOW['glide'][0]} to {HOW['glide'][1]}."},
+                "dynamics": {"type": "number", "description": f"How far loudness and brightness follow the notes, {HOW['dynamics'][0]:g} to {HOW['dynamics'][1]:g}."},
+                "breath": {"type": "number", "description": f"The chance of a breath in each rest, {HOW['breath'][0]:g} to {HOW['breath'][1]:g}."},
+                "breathiness": {"type": "number", "description": f"The breath in the sung vowels, times, {HOW['breathiness'][0]:g} to {HOW['breathiness'][1]:g}."},
+                **_WHERE,
+            },
+            "required": ["piece"],
             "additionalProperties": False,
         },
     },
@@ -154,6 +212,8 @@ _TYPES = {
     "boolean": lambda v: isinstance(v, bool),
     "integer": lambda v: isinstance(v, int) and not isinstance(v, bool),
     "number": lambda v: isinstance(v, (int, float)) and not isinstance(v, bool),
+    # of strings: the only kind a tool here takes
+    "array": lambda v: isinstance(v, list) and all(isinstance(x, str) for x in v),
 }
 
 
@@ -179,7 +239,7 @@ def _arguments(tool, given):
             raise ValueError(f"{tool['name']}: no argument {k!r}: {', '.join(schema['properties']) or 'it takes none'}")
         want = schema["properties"][k]
         if not _TYPES[want["type"]](v):
-            raise ValueError(f"{tool['name']}: {k} is {json.dumps(v)}: {want['type']} wanted")
+            raise ValueError(f"{tool['name']}: {k} is {json.dumps(v)}: {'a list of strings' if want['type'] == 'array' else want['type']} wanted")
         if "enum" in want and v not in want["enum"]:
             raise ValueError(f"{tool['name']}: {k} is {json.dumps(v)}: {', '.join(want['enum'])}")
     for k in schema.get("required", []):
@@ -326,11 +386,22 @@ class Server:
     def _devices(self, call):
         return json.dumps(devices(), indent=1, ensure_ascii=False)
 
-    def _say(self, call, text, voice="ada", quality="hifi", rate=1.0, shift=0.0, seed=0, ssml=False, device=None, out=None):
-        return self._give(call, "say", voice, device, out, lambda: say(text, voice, quality=quality, rate=rate, shift=shift, seed=seed, ssml=ssml))
+    def _choirs(self, call):
+        return json.dumps(choirs(), indent=1, ensure_ascii=False)
 
-    def _sing(self, call, score, voice="ada", quality="hifi", device=None, out=None, **options):
-        return self._give(call, "sing", voice, device, out, lambda: sing(score, voice, quality=quality, **options))
+    def _say(self, call, text, voice="ada", quality="hifi", rate=1.0, shift=0.0, seed=0, ssml=False, device=None, out=None, timing=False):
+        return self._give(call, "say", voice, device, out, timing, lambda: say(text, voice, quality=quality, rate=rate, shift=shift, seed=seed, ssml=ssml))
+
+    def _sing(self, call, score, voice="ada", quality="hifi", device=None, out=None, timing=False, **options):
+        return self._give(call, "sing", voice, device, out, timing, lambda: sing(score, voice, quality=quality, **options))
+
+    def _choir(self, call, piece, quality="hifi", device=None, out=None, timing=False, **options):
+        named = piece in choirs()
+        if not named and not piece.lstrip().startswith("{"):
+            raise ValueError(f"no choir {piece!r}: a name from the choirs tool ({', '.join(choirs())}), or a choir as JSON text")
+        # a file of the server's naming is named for the piece
+        slug = re.sub(r"[^a-z0-9]+", "-", piece.lower()).strip("-") if named else "piece"
+        return self._give(call, "choir", slug, device, out, timing, lambda: choir(piece if named else loads(piece), quality=quality, **options))
 
     def _file(self, kind, voice, device, out):
         """Where a call's WAV file goes, and whether the name is this server's own; None if it is only played."""
@@ -350,10 +421,12 @@ class Server:
             n = self._made
         return os.path.join(self.out, f"{kind}-{voice}-{time.strftime('%Y%m%d-%H%M%S')}-{n}.wav"), True
 
-    def _give(self, call, kind, voice, device, out, make):
+    def _give(self, call, kind, voice, device, out, timing, make):
         """Makes the clip and puts it where the call said. Where is settled first, so nothing is made for nowhere."""
         through = _audio.known(device) if device is not None else None
         path, own = self._file(kind, voice, device, out)
+        if timing and not path:
+            raise ValueError("timing is written beside a WAV file, and this call only plays: give out too")
         clip = make()
         if call.cancelled:
             raise _Cancelled()
@@ -363,6 +436,11 @@ class Server:
             with open(path, "xb" if own else "wb") as f:
                 f.write(clip.wav())
             said += f", written to {path}"
+            if timing:
+                beside = os.path.splitext(path)[0] + ".json"
+                with open(beside, "x" if own else "w", encoding="utf-8") as f:
+                    json.dump(clip.timing, f)
+                said += f", its timing to {beside}"
         if through:
             with self._play_lock:
                 call.play(clip, device)

@@ -7,7 +7,7 @@
 // says whether the making keeps ahead of a speaker (deck.js plays it). A choir can be made from any
 // sample of its mix on. No DOM here: the page and node both use it.
 
-import { Room, BLOCK, TRACE, TRACE_MAX, TAIL, rng } from "./room.js";
+import { Room, BLOCK, TRACE, TRACE_MAX, TAIL, rng, engine } from "./room.js";
 import { within, outside } from "./take.js";
 
 export const SR = 24000;
@@ -26,30 +26,10 @@ export function workersFor(parts, cores, cap = 4) {
 
 // choirkit.make_seats: n seats on risers facing the listener, rows of about 25 (row 0 nearest),
 // odd rows staggered half a seat; pan from the angle, so no one sits hard left or right; further
-// rows quieter, wetter and later. Sorted left to right, each with two early reflections.
+// rows quieter, wetter and later. Sorted left to right, each with two early reflections. The
+// engine's (engine/src/choir.rs seats).
 export function makeSeats(n, panMax = 0.85, halfAngle = 52) {
-  const rows = Math.max(1, Math.round(n / 25));
-  const base = Math.floor(n / rows), extra = n % rows, rad = Math.PI / 180;
-  const seats = [];
-  for (let r = 0; r < rows; r++) {
-    const c = base + (r < extra ? 1 : 0), odd = r % 2 === 1;
-    for (let i = 0; i < c; i++) {
-      const u = c > 1 ? Math.min(1, (i + (odd ? 0.5 : 0)) / Math.max(c - (odd ? 0 : 1), 1)) : 0.5;
-      const a = -halfAngle + 2 * halfAngle * u;
-      seats.push({ row: r, pan: panMax * Math.sin(a * rad) / Math.sin(halfAngle * rad), gain: 1 - 0.1 * r, send: 0.6 + 0.2 * r, delayMs: 3 * r });
-    }
-  }
-  seats.sort((a, b) => a.pan - b.pan || a.row - b.row);
-  const rnd = rng("seats");
-  const clamp = (p) => Math.max(-0.95, Math.min(0.95, p));
-  for (const s of seats) {
-    s.itdMs = 0.35 * Math.abs(s.pan);
-    s.refl = [
-      { delayMs: rnd.between(7, 19), pan: clamp(-0.6 * s.pan + rnd.between(-0.3, 0.3)), gain: 0.25 },
-      { delayMs: rnd.between(21, 37), pan: clamp(0.3 * s.pan + rnd.between(-0.5, 0.5)), gain: 0.18 },
-    ];
-  }
-  return seats;
+  return engine().seats(n, panMax, halfAngle);
 }
 
 // choirkit.coprime_step: seat (step j) % n for the j-th singer puts neighbours in order far apart
@@ -62,24 +42,10 @@ export function coprimeStep(n, frac = 0.37) {
 
 // choirkit.add_source: a source at `gain` from its seat as taps {ch, g, d} (channel, gain, delay in
 // samples): the direct sound panned, the far ear later by the interaural time, the row's gain and
-// distance, and the two reflections. The send bus takes the same taps times seat.send.
+// distance, and the two reflections. The send bus takes the same taps times seat.send. The
+// engine's (engine/src/choir.rs taps).
 export function taps(gain, seat) {
-  const ms = (x) => Math.round(x / 1000 * SR);
-  const g = gain * seat.gain, dd = ms(seat.delayMs);
-  const legs = [[seat.pan, g, dd, ms(seat.itdMs)], ...seat.refl.map((r) => [r.pan, g * r.gain, dd + ms(r.delayMs), ms(0.35 * Math.abs(r.pan))])];
-  return legs.flatMap(([p, gg, d, itd]) => {
-    const th = (p + 1) * Math.PI / 4;
-    return [{ ch: 0, g: gg * Math.cos(th), d: p > 0 ? d + itd : d }, { ch: 1, g: gg * Math.sin(th), d: p > 0 ? d : d + itd }];
-  });
-}
-
-// the factor of levels `k` ([[sample, factor]...]) at sample s, k[i] the last at or before it (i from
-// a guess at or before the answer)
-function levelAt(k, s, i = 0) {
-  while (i + 1 < k.length && k[i + 1][0] <= s) i++;
-  if (s <= k[i][0] || i + 1 === k.length) return [k[i][1], i];
-  const [a, x] = k[i], [b, y] = k[i + 1];
-  return [x + (y - x) * (s - a) / (b - a), i];
+  return engine().taps(gain, seat);
 }
 
 // The parts' samples, as they come, each from its seat at its own start, summed to four buses: dry
@@ -92,130 +58,68 @@ function levelAt(k, s, i = 0) {
 // goes: a straight line from each to the next, the first held before it and the last after. A mix
 // picked up at its sample `from` (t0 given): its parts are opened at the sample of their own they
 // come in at, and what they have before the mix's start is left out. A muted part gives no samples:
-// it is opened at its end, so the mix keeps its length and the part the levels it had.
+// it is opened at its end, so the mix keeps its length and the part the levels it had. The mixing is
+// the engine's (engine/src/choir.rs Mixer, ls_mixer); close() lets it go.
 export class Mixer {
   // parts: [{gain, seat, lv, levels, mute}], lv a part's levels kept from an earlier mix of it, or none
   constructor(parts, { t0 = null, from = 0 } = {}) {
     if (from && t0 === null) throw new Error("mixer: picked up, it needs its t0");
-    this.parts = parts.map(({ gain, seat, lv = null, levels = null, mute = false }, i) => {
-      const t = taps(gain, seat);
-      if (levels && !(levels.length && levels.every(([at, k], j) => at >= 0 && k >= 0 && Number.isFinite(k) && (!j || at > levels[j - 1][0])))) throw new Error(`mixer: part ${i}'s levels ${JSON.stringify(levels)}`);
-      return { gain, env: levels && levels.map(([at, k]) => [Math.round(at * SR), k]), taps: t, send: seat.send, reach: Math.max(...t.map((x) => x.d)), q: [], at: 0, placed: 0, got: 0, from: 0, len: null, start: null, off: null, done: false, lv, sq: 0, mute };
-    });
+    const e = (this.e = engine());
+    const spec = JSON.stringify(parts.map(({ gain, seat, levels = null, mute = false }) => ({ gain, seat, levels, mute })));
+    this.h = e.check(e.with(new TextEncoder().encode(spec), (p, n) => e.x.ls_mixer(p, n, t0 ?? NaN, from)));
+    this.parts = parts.map(({ gain, lv = null, levels = null, mute = false }, i) => ({ gain, levels, lv, mute, from: 0, len: null, got: 0, start: null, off: null, done: false, reach: e.check(e.x.ls_mixer_reach(this.h, i)) }));
     this.t0 = t0;
     this.from = from;
-    this.opened = 0;
     this.out = from; // the sample of the mix given next
-    this.base = from; // the buses' first sample
-    this.bus = [0, 1, 2, 3].map(() => new Float64Array(0));
     this.total = null; // samples in all, once every part is open
   }
 
   open(i, start, len, from = 0) {
-    const p = this.parts[i];
-    if (p.len !== null) throw new Error(`mixer: part ${i} opened twice`);
-    if (!(len > 0)) throw new Error(`mixer: part ${i} of ${len} samples`);
-    if (!(from >= 0 && from <= len) || from % TRACE) throw new Error(`mixer: part ${i} picked up at sample ${from} of ${len}`);
-    if (p.mute && from !== len) throw new Error(`mixer: part ${i} is muted, and opened at sample ${from} of ${len}`);
+    const e = this.e, p = this.parts[i];
+    e.check(e.x.ls_mixer_open(this.h, i, start, len, from));
     p.start = start;
     p.len = len;
-    p.from = p.got = p.placed = from;
+    p.from = p.got = from;
     if (p.lv?.length !== Math.ceil(len / TRACE)) p.lv = new Float32Array(Math.ceil(len / TRACE)).fill(NaN);
-    if (this.t0 !== null) {
-      if (start < this.t0) throw new Error(`mixer: part ${i} starts at ${start} s, before the mix's ${this.t0}`);
-      p.off = Math.round((start - this.t0) * SR);
-    }
-    if (++this.opened === this.parts.length) {
-      if (this.t0 === null) {
-        this.t0 = Math.min(...this.parts.map((p) => p.start));
-        for (const p of this.parts) p.off = Math.round((p.start - this.t0) * SR);
-      }
-      this.total = Math.max(...this.parts.map((p) => p.off + p.len + p.reach));
+    if (this.t0 !== null) p.off = e.check(e.x.ls_mixer_off(this.h, i));
+    const total = e.x.ls_mixer_total(this.h);
+    if (total >= 0) {
+      this.total = total;
+      this.parts.forEach((q, k) => { q.off = e.check(e.x.ls_mixer_off(this.h, k)); });
     }
   }
 
   push(i, samples) {
-    const p = this.parts[i];
-    if (p.len === null) throw new Error(`mixer: part ${i} is not open`);
-    if (p.done) throw new Error(`mixer: part ${i} has ended`);
-    if (p.got + samples.length > p.len) throw new Error(`mixer: part ${i} past its ${p.len} samples`);
-    for (let i = 0; i < samples.length; i++) {
-      p.sq += samples[i] * samples[i];
-      if ((p.got + i + 1) % TRACE === 0) { p.lv[(p.got + i + 1) / TRACE - 1] = p.gain * (p.env ? levelAt(p.env, p.got + i + 1 - TRACE / 2)[0] : 1) * Math.sqrt(p.sq / TRACE); p.sq = 0; }
-    }
-    // what a part picked up has before the mix's start is not placed
-    const lead = Math.min(samples.length, Math.max(0, this.from - p.off - p.got));
-    if (lead) p.placed += lead;
-    if (lead < samples.length) p.q.push(lead ? samples.subarray(lead) : samples);
+    const e = this.e, p = this.parts[i];
+    e.check(e.with(new Uint8Array(samples.buffer, samples.byteOffset, samples.byteLength), (q, n) => e.x.ls_mixer_push(this.h, i, q, n)));
+    // its levels as it came, every TRACE samples of its own
+    const a = Math.floor(p.got / TRACE), b = Math.floor((p.got + samples.length) / TRACE);
+    if (b > a) p.lv.set(e.samples(e.check(e.x.ls_mixer_lv(this.h, i, a, b))), a);
     p.got += samples.length;
   }
 
   end(i) {
-    const p = this.parts[i];
-    if (p.got !== p.len) throw new Error(`mixer: part ${i} ended at ${p.got} samples of ${p.len}`);
-    p.done = true;
+    this.e.check(this.e.x.ls_mixer_end(this.h, i));
+    this.parts[i].done = true;
   }
 
   get finished() {
     return this.total !== null && this.parts.every((p) => p.done) && this.out >= this.total;
   }
 
-  // the buses writable to `to` (a sample of the mix)
-  room(to) {
-    const n = this.bus[0].length;
-    if (to - this.base <= n) return;
-    const keep = this.out - this.base;
-    if (keep > 0) { // what is given is dropped first
-      for (const b of this.bus) { b.copyWithin(0, keep); b.fill(0, n - keep); }
-      this.base = this.out;
-    }
-    if (to - this.base > n) {
-      const m = Math.max(2 * n, to - this.base + 8192);
-      this.bus = this.bus.map((b) => { const c = new Float64Array(m); c.set(b); return c; });
-    }
-  }
-
-  // part p's samples from placed to `upto` (its own samples) onto the buses
-  place(p, upto) {
-    while (p.placed < upto) {
-      const c = p.q[0], k = Math.min(c.length - p.at, upto - p.placed);
-      const s0 = p.placed, a = p.at;
-      let lev = null;
-      if (p.env) {
-        lev = new Float32Array(k);
-        for (let j = 0, i = 0; j < k; j++) [lev[j], i] = levelAt(p.env, s0 + j, i);
-      }
-      for (const { ch, g, d } of p.taps) {
-        const dry = this.bus[ch], wet = this.bus[2 + ch], gs = g * p.send;
-        const o = p.off + d - this.base;
-        for (let j = 0; j < k; j++) {
-          const s = s0 + j;
-          let x = c[a + j];
-          if (s < FADE) x *= s / FADE;
-          if (s >= p.len - FADE) x *= (p.len - 1 - s) / FADE;
-          if (lev) x *= lev[j];
-          dry[o + s] += g * x;
-          wet[o + s] += gs * x;
-        }
-      }
-      p.placed += k;
-      p.at += k;
-      if (p.at === c.length) { p.q.shift(); p.at = 0; }
-    }
-  }
-
   // [dry l, dry r, send l, send r] as far as every part has reached, or null
   take() {
-    if (this.total === null) return null;
-    let lim = this.total;
-    for (const p of this.parts) if (!p.done) lim = Math.min(lim, p.off + p.got);
-    if (lim <= this.out) return null;
-    this.room(Math.max(...this.parts.map((p) => p.off + Math.min(p.got, Math.max(0, lim - p.off)) + p.reach)));
-    for (const p of this.parts) this.place(p, Math.min(p.got, Math.max(0, lim - p.off)));
-    const a = this.out - this.base, b = lim - this.base;
-    const y = this.bus.map((x) => Float32Array.from(x.subarray(a, b)));
-    this.out = lim;
-    return y;
+    const e = this.e, n = e.check(e.x.ls_mixer_take(this.h));
+    if (!n) return null;
+    const all = e.samples(4 * n);
+    this.out += n;
+    return [0, 1, 2, 3].map((c) => all.subarray(c * n, (c + 1) * n));
+  }
+
+  close() {
+    if (this.h === null) throw new Error("mixer: closed twice");
+    this.e.check(this.e.x.ls_mixer_close(this.h));
+    this.h = null;
   }
 }
 
@@ -348,7 +252,14 @@ export class Choir {
   // Stops the job (id) on every worker; whoever owns the speaker stops that.
   stop(id) {
     for (const w of this.pool) w.postMessage({ type: "stop", id });
-    if (this.job && this.job.id <= id) this.job = null;
+    if (this.job && this.job.id <= id) this.drop();
+  }
+
+  // the job let go, and the engine's mixer and room with it
+  drop() {
+    this.job.mixer.close();
+    this.job.room.close();
+    this.job = null;
   }
 
   fail(message) {
@@ -480,7 +391,7 @@ export class Choir {
     const secs = j.mixer.parts.reduce((a, p) => a + p.got - p.from, 0) / SR;
     const busy = (whole ? j.done.reduce((a, d) => a + d.busy, 0) : j.busy.reduce((a, b) => a + b, 0)) / 1000;
     const wall = (this.now() - j.t0ms) / 1000, mix = (j.pos - j.at) / SR;
-    if (whole) this.job = null;
+    if (whole) this.drop();
     else this.stop(j.id);
     this.onDone(j, { parts: j.n, workers: j.w, mix, secs, wall, busy, whole, speed: secs / wall, perCompute: secs / busy, realtime: mix / wall });
   }

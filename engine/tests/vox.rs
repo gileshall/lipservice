@@ -165,9 +165,9 @@ fn vox_sings_through_the_stream() {
     let mut v = voice();
     let vox = Vox::load(read("vox-i8.lsw"), v.vox.take().unwrap()).unwrap();
     let mut ph = Phonemizer::new(Lexicon::load(&read("lexicon.lsw")).unwrap(), G2p::load(&read("g2p-i8.lsw")).unwrap()).unwrap();
-    let song = Song::parse("bpm 120\nrest 0.5\nrow D4:1\nthe F#4:0.5\nboat E4:1.5\nrest 1\nhome A4:2\nrest 1\n").unwrap();
+    let song = Song::parse("%bpm 120\n%rest 0.5\nrow D4:1\nthe F#4:0.5\nboat E4:1.5\n%rest 1\nhome A4:2\n%rest 1\n").unwrap();
     for (dynamics, breathiness, seed) in [(0.0, 1.0, 0), (1.0, 0.35, 4), (0.0, 0.35, 0)] {
-        let st = Style { shift: 0.0, vibrato: 0.25, vibrato_hz: 5.5, vibrato_delay: 0.25, vibrato_ramp: 0.2, glide: 9, dynamics, consonants: 1.0, breathiness, diction: false, motion: None, motion_scale: 1.0, seed };
+        let st = Style { shift: 0.0, vibrato: 0.25, vibrato_hz: 5.5, vibrato_delay: 0.25, vibrato_ramp: 0.2, glide: 9, dynamics, consonants: 1.0, breathiness, who: Default::default(), motion: None, motion_scale: 1.0, seed };
         let p = sing::plan(&v.score, &mut ph, &song, 0, &st).unwrap();
         let (vuv, _) = sing::voicing(&v.score, &v.score.expand(&p.h, &p.durations), &p);
         let (gain, tilt) = sing::loudness(&p.gain, &p.quiet);
@@ -214,7 +214,7 @@ fn vox_sings_through_the_stream() {
         }
         println!("dynamics {dynamics} breathiness {breathiness}: {} samples", want.len());
     }
-    let p = sing::plan(&v.score, &mut ph, &song, 0, &Style { shift: 0.0, vibrato: 0.25, vibrato_hz: 5.5, vibrato_delay: 0.25, vibrato_ramp: 0.2, glide: 9, dynamics: 0.0, consonants: 1.0, breathiness: 1.0, diction: false, motion: None, motion_scale: 1.0, seed: 0 }).unwrap();
+    let p = sing::plan(&v.score, &mut ph, &song, 0, &Style { shift: 0.0, vibrato: 0.25, vibrato_hz: 5.5, vibrato_delay: 0.25, vibrato_ramp: 0.2, glide: 9, dynamics: 0.0, consonants: 1.0, breathiness: 1.0, who: Default::default(), motion: None, motion_scale: 1.0, seed: 0 }).unwrap();
     assert!(Stream::sung(&v.score, Render::Vox(&vox), p, 0, Some(3.0), 0, None).is_err());
 }
 
@@ -224,10 +224,10 @@ fn vox_picks_a_song_up() {
     let mut v = voice();
     let vox = Vox::load(read("vox-i8.lsw"), v.vox.take().unwrap()).unwrap();
     let mut ph = Phonemizer::new(Lexicon::load(&read("lexicon.lsw")).unwrap(), G2p::load(&read("g2p-i8.lsw")).unwrap()).unwrap();
-    let text = format!("bpm 120\n{}", "rest 0.5\nrow D4:1\nthe F#4:0.5\nboat E4:1.5+F#4:1\nrest 1\nhome A4:2\n".repeat(3));
+    let text = format!("%bpm 120\n{}", "%rest 0.5\nrow D4:1\nthe F#4:0.5\nboat E4:1.5+F#4:1\n%rest 1\nhome A4:2\n".repeat(3));
     let song = Song::parse(&text).unwrap();
     for (dynamics, breathiness, seed) in [(0.0, 1.0, 0), (1.0, 0.35, 4)] {
-        let st = Style { shift: 0.0, vibrato: 0.25, vibrato_hz: 5.5, vibrato_delay: 0.25, vibrato_ramp: 0.2, glide: 9, dynamics, consonants: 1.0, breathiness, diction: false, motion: None, motion_scale: 1.0, seed };
+        let st = Style { shift: 0.0, vibrato: 0.25, vibrato_hz: 5.5, vibrato_delay: 0.25, vibrato_ramp: 0.2, glide: 9, dynamics, consonants: 1.0, breathiness, who: Default::default(), motion: None, motion_scale: 1.0, seed };
         let p = sing::plan(&v.score, &mut ph, &song, 0, &st).unwrap();
         let total = p.lf0.len();
         let mut s = Stream::sung(&v.score, Render::Vox(&vox), p.tail(0), 0, None, seed, None).unwrap();
@@ -266,8 +266,8 @@ fn vox_scatters_a_hiss() {
     let mut v = voice();
     let vox = Vox::load(read("vox-i8.lsw"), v.vox.take().unwrap()).unwrap();
     let mut ph = Phonemizer::new(Lexicon::load(&read("lexicon.lsw")).unwrap(), G2p::load(&read("g2p-i8.lsw")).unwrap()).unwrap();
-    let song = Song::parse("bpm 100\nrest 0.5\nacross D4:1 G4:1.5\nthe G4:0.5\nsea A4:2\nrest 1\nships E4:1.5\npass D4:2\nrest 1\nwas G4:1\nchosen A4:1 G4:1\nrest 1\neasy G4:2 A4:2\nrest 1\n").unwrap();
-    let st = Style { shift: 0.0, vibrato: 0.25, vibrato_hz: 5.5, vibrato_delay: 0.25, vibrato_ramp: 0.2, glide: 9, dynamics: 1.0, consonants: 1.0, breathiness: 1.0, diction: false, motion: None, motion_scale: 1.0, seed: 0 };
+    let song = Song::parse("%bpm 100\n%rest 0.5\nacross D4:1 G4:1.5\nthe G4:0.5\nsea A4:2\n%rest 1\nships E4:1.5\npass D4:2\n%rest 1\nwas G4:1\nchosen A4:1 G4:1\n%rest 1\neasy G4:2 A4:2\n%rest 1\n").unwrap();
+    let st = Style { shift: 0.0, vibrato: 0.25, vibrato_hz: 5.5, vibrato_delay: 0.25, vibrato_ramp: 0.2, glide: 9, dynamics: 1.0, consonants: 1.0, breathiness: 1.0, who: Default::default(), motion: None, motion_scale: 1.0, seed: 0 };
     let p = sing::plan(&v.score, &mut ph, &song, 0, &st).unwrap();
     let (vuv, _) = sing::voicing(&v.score, &v.score.expand(&p.h, &p.durations), &p);
     let (gain, tilt) = sing::loudness(&p.gain, &p.quiet);
@@ -469,9 +469,9 @@ fn vox_picks_up_a_song_in_the_band() {
     let mut v = voice();
     let vox = Vox::load(read("vox-i8.lsw"), v.vox.take().unwrap()).unwrap();
     let mut ph = Phonemizer::new(Lexicon::load(&read("lexicon.lsw")).unwrap(), G2p::load(&read("g2p-i8.lsw")).unwrap()).unwrap();
-    let text = format!("bpm 120\n{}", "rest 0.5\nrow C5:1\nthe C#5:0.5\nboat D5:1.5+E5:1\nrest 1\nhome D#5:1+F5:1\nrow D5:2\n".repeat(3));
+    let text = format!("%bpm 120\n{}", "%rest 0.5\nrow C5:1\nthe C#5:0.5\nboat D5:1.5+E5:1\n%rest 1\nhome D#5:1+F5:1\nrow D5:2\n".repeat(3));
     let song = Song::parse(&text).unwrap();
-    let st = Style { shift: 0.0, vibrato: 0.5, vibrato_hz: 5.5, vibrato_delay: 0.1, vibrato_ramp: 0.1, glide: 9, dynamics: 1.0, consonants: 1.0, breathiness: 1.0, diction: false, motion: None, motion_scale: 1.0, seed: 1 };
+    let st = Style { shift: 0.0, vibrato: 0.5, vibrato_hz: 5.5, vibrato_delay: 0.1, vibrato_ramp: 0.1, glide: 9, dynamics: 1.0, consonants: 1.0, breathiness: 1.0, who: Default::default(), motion: None, motion_scale: 1.0, seed: 1 };
     let p = sing::plan(&v.score, &mut ph, &song, 0, &st).unwrap();
     let total = p.lf0.len();
     let in_band = |l: f32| l.exp() > 540.0 && l.exp() <= 640.0;
@@ -508,8 +508,8 @@ fn vox_sings_a_told_pitch_through_the_stream() {
     let mut v = voice();
     let vox = Vox::load(read("vox-i8.lsw"), v.vox.take().unwrap()).unwrap();
     let mut ph = Phonemizer::new(Lexicon::load(&read("lexicon.lsw")).unwrap(), G2p::load(&read("g2p-i8.lsw")).unwrap()).unwrap();
-    let song = Song::parse("bpm 120\nrest 0.5\nrow D4:1\nthe F#4:0.5\nboat E4:1.5\nrest 1\nhome A4:2\nrest 1\n").unwrap();
-    let st = Style { shift: 0.0, vibrato: 0.25, vibrato_hz: 5.5, vibrato_delay: 0.25, vibrato_ramp: 0.2, glide: 9, dynamics: 1.0, consonants: 1.0, breathiness: 0.35, diction: false, motion: None, motion_scale: 1.0, seed: 2 };
+    let song = Song::parse("%bpm 120\n%rest 0.5\nrow D4:1\nthe F#4:0.5\nboat E4:1.5\n%rest 1\nhome A4:2\n%rest 1\n").unwrap();
+    let st = Style { shift: 0.0, vibrato: 0.25, vibrato_hz: 5.5, vibrato_delay: 0.25, vibrato_ramp: 0.2, glide: 9, dynamics: 1.0, consonants: 1.0, breathiness: 0.35, who: Default::default(), motion: None, motion_scale: 1.0, seed: 2 };
     let mut p = sing::plan(&v.score, &mut ph, &song, 0, &st).unwrap();
     assert!(p.told.is_empty());
     let total = p.lf0.len();

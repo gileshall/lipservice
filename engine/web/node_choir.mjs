@@ -14,6 +14,8 @@ import { fileURLToPath } from "node:url";
 import { Worker } from "node:worker_threads";
 import { cpus } from "node:os";
 import { Choir } from "./choir.js";
+import { Engine } from "./lipservice.js";
+import { setEngine } from "./room.js";
 import { routesOf } from "./routes.js";
 
 const web = dirname(fileURLToPath(import.meta.url));
@@ -39,6 +41,8 @@ export async function nodeChoir(site, { onSound = () => {}, onOpen = () => {}, o
     postMessage(m, transfer) { this.w.postMessage(m, transfer); }
     terminate() { return this.w.terminate(); }
   }
+  // the mixer and the room run in an engine on this thread
+  setEngine(await Engine.create(readFileSync(join(site, "lipservice.wasm"))));
   const main = new NodeWorker(false);
   const choir = new Choir({ main, cores: cpus().length, cap, spawn: () => new NodeWorker(true), onSound, onOpen, onDone, onError });
   await new Promise((resolve, reject) => {

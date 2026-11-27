@@ -7,9 +7,10 @@
 //! `Get` (the command line runs curl; the Python package, urllib), so this crate needs no network
 //! code of its own.
 //!
-//! The manifest is read from the first source that gives it, once a process, and kept. When none
-//! can be reached, the kept one is used, and that is said. A file is fetched when it is first
-//! needed, or when the manifest's hash for it is not the one it was kept under. With
+//! The manifest is read from the first source that gives it when none is kept, and kept. After
+//! that the kept one is the list and no server is asked, until `lipservice fetch` reads the
+//! server's again. A file is fetched when it is first needed, or when the manifest's hash for it
+//! is not the one it was kept under. With
 //! LIPSERVICE_MODELS set, that folder is the models, its manifest.json the list, and nothing is
 //! fetched.
 
@@ -32,6 +33,13 @@ pub fn sources() -> Vec<String> {
         _ => SOURCES.iter().map(|s| s.to_string()).collect(),
     }
 }
+/// What reads the server's manifest again.
+const AGAIN: &str = "`lipservice fetch` reads the server's list again";
+
+/// LIPSERVICE_MODELS's folder, when it is set.
+fn named() -> Option<PathBuf> {
+    std::env::var_os("LIPSERVICE_MODELS").filter(|v| !v.is_empty()).map(PathBuf::from)
+}
 pub const QUALITIES: &[&str] = &["hifi", "fast"];
 pub const MOTIONS: &[&str] = &["straight", "vibrato", "wide"];
 
@@ -45,6 +53,8 @@ pub struct File {
 
 pub struct Voice {
     pub name: String,
+    /// Its name in the models, as a choir's parts say it.
+    pub id: String,
     pub sex: String,
     pub source: String,
 }
@@ -52,7 +62,7 @@ pub struct Voice {
 pub struct Home {
     /// The folder the files are read from.
     pub dir: PathBuf,
-    /// Whether files may be fetched into it (not when LIPSERVICE_MODELS names it).
+    /// Whether files may be fetched into it (not a folder named).
     fetches: bool,
     pub set: String,
     pub voices: Vec<Voice>,
@@ -91,7 +101,7 @@ fn parse(text: &str, whence: &str) -> Result<(String, Vec<Voice>, BTreeMap<Strin
     let set = m.get("set")?.str()?.to_string();
     let mut voices = Vec::new();
     for v in m.get("voices")?.arr()? {
-        voices.push(Voice { name: v.get("name")?.str()?.into(), sex: v.get("sex")?.str()?.into(), source: v.get("source")?.str()?.into() });
+        voices.push(Voice { name: v.get("name")?.str()?.into(), id: v.get("id")?.str()?.into(), sex: v.get("sex")?.str()?.into(), source: v.get("source")?.str()?.into() });
     }
     let mut files = BTreeMap::new();
     match m.get("files")? {
@@ -117,37 +127,53 @@ fn say(line: &str) {
 }
 
 impl Home {
-    /// The models: LIPSERVICE_MODELS's folder, or the cache with the served manifest.
+    /// The models in a folder named: its manifest.json the list, nothing fetched.
+    pub fn at(dir: &Path) -> Result<Home> {
+        let p = dir.join("manifest.json");
+        let text = fs::read_to_string(&p).map_err(|e| io(&p, e))?;
+        let (set, voices, files) = parse(&text, &p.display().to_string())?;
+        Ok(Home { dir: dir.to_path_buf(), fetches: false, set, voices, files, text })
+    }
+
+    /// The models: LIPSERVICE_MODELS's folder, or the cache and the manifest kept in it. The
+    /// server's is read only when none is kept.
     pub fn open(get: Get) -> Result<Home> {
-        if let Some(given) = std::env::var_os("LIPSERVICE_MODELS").filter(|v| !v.is_empty()) {
-            let dir = PathBuf::from(given);
-            let p = dir.join("manifest.json");
-            let text = fs::read_to_string(&p).map_err(|e| io(&p, e))?;
-            let (set, voices, files) = parse(&text, &p.display().to_string())?;
-            return Ok(Home { dir, fetches: false, set, voices, files, text });
+        match named() {
+            Some(dir) => Home::at(&dir),
+            None => Home::kept(&cache()?, false, get),
         }
-        let dir = cache()?;
-        fs::create_dir_all(&dir).map_err(|e| io(&dir, e))?;
+    }
+
+    /// As `open`, the server's manifest read again first and kept in place of the one there.
+    pub fn update(get: Get) -> Result<Home> {
+        match named() {
+            Some(dir) => Home::at(&dir),
+            None => Home::kept(&cache()?, true, get),
+        }
+    }
+
+    fn kept(dir: &Path, again: bool, get: Get) -> Result<Home> {
+        fs::create_dir_all(dir).map_err(|e| io(dir, e))?;
         let kept = dir.join("manifest.json");
-        let part = dir.join(format!("manifest.json.{}.part", std::process::id()));
-        let text = match fetch_from_sources("manifest.json", &part, get) {
-            Ok(()) => {
+        if again || !kept.exists() {
+            let part = dir.join(format!("manifest.json.{}.part", std::process::id()));
+            let read = fetch_from_sources("manifest.json", &part, get).and_then(|()| {
                 let text = fs::read_to_string(&part).map_err(|e| io(&part, e))?;
                 parse(&text, "the server's manifest.json")?;
-                fs::rename(&part, &kept).map_err(|e| io(&kept, e))?;
-                text
-            }
-            Err(e) => {
-                let _ = fs::remove_file(&part);
-                if !kept.exists() {
-                    return Err(e);
+                fs::rename(&part, &kept).map_err(|e| io(&kept, e))
+            });
+            if let Err(e) = read {
+                if let Err(gone) = fs::remove_file(&part) {
+                    if gone.kind() != std::io::ErrorKind::NotFound {
+                        return Err(Error(format!("{}; and {}", e.0, io(&part, gone).0)));
+                    }
                 }
-                say(&format!("{e}; using the models kept in {}", dir.display()));
-                fs::read_to_string(&kept).map_err(|e| io(&kept, e))?
+                return Err(e);
             }
-        };
-        let (set, voices, files) = parse(&text, "the server's manifest.json")?;
-        Ok(Home { dir, fetches: true, set, voices, files, text })
+        }
+        let text = fs::read_to_string(&kept).map_err(|e| io(&kept, e))?;
+        let (set, voices, files) = parse(&text, &kept.display().to_string())?;
+        Ok(Home { dir: dir.to_path_buf(), fetches: true, set, voices, files, text })
     }
 
     pub fn voice(&self, name: &str) -> Result<&Voice> {
@@ -157,11 +183,17 @@ impl Home {
 
     /// Where file `name` is, fetched first if it is not kept or has changed.
     pub fn path(&self, name: &str, get: Get) -> Result<PathBuf> {
-        let want = self.files.get(name).ok_or_else(|| Error(format!("no model file {name}")))?;
+        let want = self.files.get(name).ok_or_else(|| {
+            Error(if self.fetches {
+                format!("no model file {name} in the list kept in {} (set {}): {AGAIN}", self.dir.display(), self.set)
+            } else {
+                format!("no model file {name} in {}", self.dir.join("manifest.json").display())
+            })
+        })?;
         let p = name.split('/').fold(self.dir.clone(), |p, part| p.join(part));
         if !self.fetches {
             if !p.exists() {
-                return err(format!("{}: not in the folder LIPSERVICE_MODELS names", p.display()));
+                return err(format!("{}: not in the models folder", p.display()));
             }
         } else if !(p.exists() && kept(&self.dir)?.get(name) == Some(&want.sha256)) {
             self.fetch(name, want, &p, get)?;
@@ -184,7 +216,7 @@ impl Home {
             let size = fs::metadata(&part).map_err(|e| io(&part, e))?.len();
             let sha = sha256_file(&part)?;
             if (size, sha.as_str()) != (want.size, want.sha256.as_str()) {
-                return err(format!("{name}: {size} bytes, sha256 {sha}; the manifest has {} bytes, sha256 {}", want.size, want.sha256));
+                return err(format!("{name}: {size} bytes, sha256 {sha}; the list kept in {} (set {}) has {} bytes, sha256 {}: {AGAIN}", self.dir.display(), self.set, want.size, want.sha256));
             }
             Ok(())
         });
@@ -210,7 +242,6 @@ impl Home {
         Home::base_files(quality)?;
         Ok(self.files.keys().filter(|n| match n.split('/').next() {
             Some(q) if QUALITIES.contains(&q) => q == quality,
-            Some("page") => false,
             _ => true,
         }).cloned().collect())
     }
@@ -370,5 +401,78 @@ mod tests {
             x.update(&[b'a'; 1000]);
         }
         assert_eq!(x.hex(), "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0");
+    }
+
+    #[test]
+    fn a_quality_keeps_its_own_files_and_what_everyone_reads() {
+        let f = |n: &str| format!("\"{n}\":{{\"size\":1,\"sha256\":\"{}\"}}", "0".repeat(64));
+        let names = ["base.lsw", "choirs.json", "fast/vocoder.lsw", "fast/voices/ada.lsw", "hifi/vox.lsw", "hifi/voices/ada.lsw", "motion/wide.lsw", "page/breaths.bin", "page/breaths.json", "voices/ada.lsw"];
+        let text = format!(
+            "{{\"format\":1,\"set\":\"s\",\"voices\":[{{\"name\":\"ada\",\"id\":\"19\",\"sex\":\"F\",\"source\":\"x\"}}],\"files\":{{{}}}}}",
+            names.map(f).join(",")
+        );
+        let (set, voices, files) = parse(&text, "a test").unwrap();
+        let home = Home { dir: PathBuf::from("."), fetches: false, set, voices, files, text };
+        // the name people call a voice by, and its name in the models
+        assert_eq!((home.voice("Ada").unwrap().id.as_str(), home.voices[0].name.as_str()), ("19", "ada"));
+        // the choirs and the breaths they take with either quality; never the other quality's
+        let hifi = home.quality_files("hifi").unwrap();
+        assert_eq!(hifi, ["base.lsw", "choirs.json", "hifi/voices/ada.lsw", "hifi/vox.lsw", "motion/wide.lsw", "page/breaths.bin", "page/breaths.json", "voices/ada.lsw"]);
+        assert!(home.quality_files("fast").unwrap().iter().all(|n| !n.starts_with("hifi/")));
+        assert!(home.quality_files("best").is_err());
+    }
+
+    #[test]
+    fn the_kept_list_is_the_list_until_the_servers_is_asked_for() {
+        let top = std::env::temp_dir().join(format!("lipservice-home-{}", std::process::id()));
+        let (served, dir) = (top.join("served"), top.join("kept"));
+        fs::create_dir_all(&served).unwrap();
+        let serve = |files: &[(&str, &[u8])], set: &str| {
+            let mut list = Vec::new();
+            for (n, b) in files {
+                fs::write(served.join(n), b).unwrap();
+                let mut h = Sha256::new();
+                h.update(b);
+                list.push(format!("\"{n}\":{{\"size\":{},\"sha256\":\"{}\"}}", b.len(), h.hex()));
+            }
+            fs::write(served.join("manifest.json"), format!("{{\"format\":1,\"set\":\"{set}\",\"voices\":[],\"files\":{{{}}}}}", list.join(","))).unwrap();
+        };
+        let mut asked: Vec<String> = Vec::new();
+        let mut get = |url: &str, out: &Path| {
+            let name = url.rsplit('/').next().unwrap().to_string();
+            asked.push(name.clone());
+            fs::copy(served.join(&name), out).map(|_| ()).map_err(|e| Error(e.to_string()))
+        };
+        let seen = |get: Get, again: bool| Home::kept(&dir, again, get).map(|h| (h.set.clone(), h));
+        serve(&[("a.lsw", b"one")], "first");
+        // none kept: the server's is read, and a file when it is first needed
+        let (set, home) = seen(&mut get, false).unwrap();
+        assert_eq!(set, "first");
+        assert_eq!(fs::read(home.path("a.lsw", &mut get).unwrap()).unwrap(), b"one");
+        // one kept: nothing is asked of the server, whatever it now serves
+        serve(&[("a.lsw", b"two!"), ("b.lsw", b"new")], "second");
+        let (set, home) = seen(&mut get, false).unwrap();
+        assert_eq!(set, "first");
+        assert_eq!(fs::read(home.path("a.lsw", &mut get).unwrap()).unwrap(), b"one");
+        let e = home.path("b.lsw", &mut get).unwrap_err().0;
+        assert!(e.starts_with("no model file b.lsw in the list kept in ") && e.ends_with("(set first): `lipservice fetch` reads the server's list again"), "{e}");
+        // a file of the kept list that the server has since changed is refused, and nothing of it kept
+        fs::remove_file(dir.join("a.lsw")).unwrap();
+        let e = home.path("a.lsw", &mut get).unwrap_err().0;
+        assert!(e.starts_with("a.lsw: 4 bytes, sha256 ") && e.ends_with("`lipservice fetch` reads the server's list again"), "{e}");
+        assert!(!dir.join("a.lsw").exists());
+        // asked for again: the server's list, and its files
+        let (set, home) = seen(&mut get, true).unwrap();
+        assert_eq!(set, "second");
+        assert_eq!(fs::read(home.path("a.lsw", &mut get).unwrap()).unwrap(), b"two!");
+        assert_eq!(fs::read(home.path("b.lsw", &mut get).unwrap()).unwrap(), b"new");
+        let n = sources().len();
+        assert_eq!(asked.iter().filter(|a| *a == "manifest.json").count(), 2 * n);
+        // asked for again with no server: refused, and the kept list is still the one kept
+        let mut get = |_: &str, _: &Path| err("no network");
+        let e = Home::kept(&dir, true, &mut get).map(|_| ()).unwrap_err().0;
+        assert!(e.starts_with("manifest.json could not be fetched: ") && e.contains("no network"), "{e}");
+        assert_eq!(Home::kept(&dir, false, &mut get).unwrap().set, "second");
+        fs::remove_dir_all(&top).unwrap();
     }
 }

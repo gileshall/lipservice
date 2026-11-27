@@ -2,15 +2,15 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "dev.lipservice/lipservice",
   "title": "Lip Service",
-  "description": "Speech and singing made on your own CPU: sixteen English voices, played aloud or written as WAV.",
-  "version": "0.1.1",
+  "description": "Speech, singing and choirs made on your own CPU: sixteen English voices, played aloud or written as WAV.",
+  "version": "0.2.0",
   "websiteUrl": "https://lipservice.dev",
   "packages": [
     {
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "lipservice",
-      "version": "0.1.1",
+      "version": "0.2.0",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"

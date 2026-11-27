@@ -19,6 +19,8 @@ import { join } from "node:path";
 import { SR } from "./choir.js";
 import { CHOIRS, arrange } from "./choirs.js";
 import { nodeChoir, routeOf } from "./node_choir.mjs";
+import { Engine } from "./lipservice.js";
+import { setEngine } from "./room.js";
 
 const [site, out, askPath] = process.argv.slice(2);
 if (site === "--choirs" && !out) {
@@ -35,6 +37,7 @@ const { choir: asked, ...opts } = JSON.parse(readFileSync(askPath, "utf8"));
 for (const k of Object.keys(opts)) if (!["seed", "voices", "songs", "room", "motion", "how"].includes(k)) throw new Error(`${askPath}: no ${k}`);
 const preset = typeof asked === "string" ? CHOIRS[asked] : asked;
 if (!preset) throw new Error(`no choir ${asked}`);
+setEngine(await Engine.create(readFileSync(join(site, "lipservice.wasm")))); // arranged by the engine
 const job = arrange(preset, { list: JSON.parse(readFileSync(join(site, "models/voices.json"), "utf8")), route: routeOf(site), ...opts });
 
 const chunks = [[], []], t0 = performance.now();

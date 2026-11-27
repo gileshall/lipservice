@@ -681,11 +681,11 @@ fn singing_chooses() {
     use lipservice::sing::{plan, Song, Style};
     let m = ScoreModel::load(&read("score-a-i8.lsw")).unwrap();
     let mut ph = phonemizer();
-    let st = Style { shift: 0.0, vibrato: 0.0, vibrato_hz: 5.5, vibrato_delay: 0.25, vibrato_ramp: 0.2, glide: 9, dynamics: 0.0, consonants: 1.0, breathiness: 1.0, diction: false, motion: None, motion_scale: 1.0, seed: 0 };
-    let mut sung = |song: &str| plan(&m, &mut ph, &Song::parse(&format!("bpm 120\n{song}")).unwrap(), 0, &st).unwrap().tokens;
+    let st = Style { shift: 0.0, vibrato: 0.0, vibrato_hz: 5.5, vibrato_delay: 0.25, vibrato_ramp: 0.2, glide: 9, dynamics: 0.0, consonants: 1.0, breathiness: 1.0, who: Default::default(), motion: None, motion_scale: 1.0, seed: 0 };
+    let mut sung = |song: &str| plan(&m, &mut ph, &Song::parse(&format!("%bpm 120\n%diction spoken\n{song}")).unwrap(), 0, &st).unwrap().tokens;
     assert_eq!(sound(&sung("we C4:1\nlive D4:1\nhere E4:1\n"), LIVE), LIVE[0]);
     assert_eq!(sound(&sung("the C4:1\nlive D4:1\nwire E4:1 E4:1\n"), LIVE), LIVE[1]);
     // a rest ends the clause as a comma does
     assert_eq!(sound(&sung("i C4:1\nwill C4:1\nread D4:1\nit E4:1\n"), READ), READ[1]);
-    assert_eq!(sound(&sung("i C4:1\nwill C4:1\nrest 1\nread D4:1\nit E4:1\n"), READ), READ[0]);
+    assert_eq!(sound(&sung("i C4:1\nwill C4:1\n%rest 1\nread D4:1\nit E4:1\n"), READ), READ[0]);
 }

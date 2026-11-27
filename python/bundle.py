@@ -14,7 +14,8 @@ laid out as it is served: uploading ROOT over the served folder replaces what is
 The manifest: its format, the set (a hash of the files' hashes, so a change to any file shows),
 the voices in the stage's order, and every file's size and SHA-256 with "site", the path a site's
 page asks for it by. A file's first folder says who needs it: hifi/ and fast/ one quality, page/
-the page alone, anything else everyone.
+the page and the package's choir() (the breaths), anything else everyone. A file with no "site" is the package's alone: choirs.json,
+the page's choir presets (engine/web/choirs.js CHOIRS) as `node choir_wav.mjs --choirs` prints them.
 
 A voice's name is the first word of its label in voices.json, lowercased; the rest of the label,
 in parentheses, is its source. id, label and base are the stage's own name, label and base.
@@ -27,6 +28,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE = "score-l-flow-mel"
@@ -45,6 +47,7 @@ OWN = {"hifi": ["vox.lsw"], "fast": ["melvoc.lsw", "vocoder.lsw"]}
 PART = {"hifi": "vox", "fast": "mel"}
 # what only a site's page loads
 PAGE = {"page/breaths.json": "breaths.json", "page/breaths.bin": "breaths.bin"}
+CHOIR_WAV = os.path.join(HERE, "..", "engine", "web", "choir_wav.mjs")
 
 
 def _voices(stage):
@@ -105,6 +108,10 @@ def main():
     for name, (stage, src) in sorted(plan.items()):
         full = os.path.join(stage, src)
         files[name] = {"size": os.path.getsize(full), "sha256": _sha(full), "site": f"models/{src}"}
+    choirs = subprocess.run(["node", CHOIR_WAV, "--choirs"], stdout=subprocess.PIPE, check=True).stdout
+    json.loads(choirs)
+    files["choirs.json"] = {"size": len(choirs), "sha256": hashlib.sha256(choirs).hexdigest()}
+    files = dict(sorted(files.items()))
     set_id = hashlib.sha256("".join(f"{n} {f['sha256']}\n" for n, f in files.items()).encode()).hexdigest()[:12]
     out = a.out
     manifest = {"format": 1, "set": set_id, "voices": voices["hifi"], "files": files}
@@ -114,6 +121,8 @@ def main():
         shutil.copyfile(os.path.join(stage, src), dst)
         if _sha(dst) != files[name]["sha256"]:
             raise OSError(f"{dst}: not the bytes that were hashed")
+    with open(os.path.join(out, "choirs.json"), "wb") as f:
+        f.write(choirs)
     with open(os.path.join(out, "manifest.json"), "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=1)
         f.write("\n")

@@ -14,12 +14,15 @@ source package, with no library in it). It reads each file's fenced blocks:
                       refuse it, in those words.
     ```python         run; a file's blocks share their names, in order.
     ```bash           each `lipservice ...` line is run; others (pip, git) are not.
+    ```json           a choir (an object with "parts") is sung, and must come out in stereo with
+                      a part for each written; any other JSON is left alone.
 
 Nothing is played: play() and the players the command line calls are replaced by ones that only
 count. Everything runs in an empty folder, and songs are sung on the fast quality. Every example
 that does not do what its page says is listed, and the exit status is then 1.
 """
 
+import json
 import os
 import re
 import shlex
@@ -39,19 +42,11 @@ class Wrong(Exception):
 
 
 def beats(score):
-    """A score's bpm and its beats, as written."""
-    bpm, total = None, 0.0
-    for line in score.splitlines():
-        f = line.split()
-        if not f or f[0].startswith("#") or f[0] == "vibrato":
-            continue
-        if f[0] == "bpm":
-            bpm = float(f[1])
-        elif f[0] == "rest":
-            total += float(f[1])
-        else:
-            total += sum(float(n.split(":")[1]) for g in f[1:] for n in g.split("+"))
-    return bpm, total
+    """A score's bpm and its beats, as the engine reads it."""
+    import lipservice as lip
+
+    s = lip.read(score)
+    return s["bpm"], s["beats"]
 
 
 def check_score(score, name, refused):
@@ -73,6 +68,22 @@ def check_score(score, name, refused):
     if not EXTRA[0] <= extra <= EXTRA[1]:
         raise Wrong(f"{clip.seconds:.2f} s for {total:g} beats at {bpm:g}, {extra:.2f} s over")
     return f"sung, {clip.seconds:.2f} s for {total:g} beats at {bpm:g}"
+
+
+def check_choir(block):
+    try:
+        piece = json.loads(block)
+    except ValueError as e:
+        raise Wrong(f"not JSON: {e}") from None
+    if not (isinstance(piece, dict) and "parts" in piece):
+        return None
+    try:
+        clip = lip.choir(piece, quality="fast")
+    except (lip.Error, ValueError) as e:
+        raise Wrong(f"refused: {e}") from None
+    if clip.channels != 2 or len(clip.timing["parts"]) != len(piece["parts"]):
+        raise Wrong(f"{clip.channels} channels and {len(clip.timing['parts'])} parts sung for {len(piece['parts'])} written")
+    return f"a choir of {len(piece['parts'])} sung, {clip.seconds:.2f} s"
 
 
 def check_python(block, where, names):
@@ -118,11 +129,15 @@ def main():
             names = {}
             for m in FENCE.finditer(text):
                 lang, rest, body, refused = m.group(1), m.group(2).strip(), m.group(3), m.group(4)
-                if lang not in ("score", "python", "bash"):
+                if lang not in ("score", "python", "bash", "json"):
                     continue
                 where = f"{os.path.basename(path)}:{text.count(chr(10), 0, m.start()) + 1}"
                 try:
-                    if lang == "score":
+                    if lang == "json":
+                        said = check_choir(body)
+                        if said is None:
+                            continue
+                    elif lang == "score":
                         said = check_score(body, rest, refused)
                     elif lang == "python":
                         said = check_python(body, where, names)

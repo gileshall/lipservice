@@ -27,7 +27,15 @@ import tempfile
 import threading
 import time
 
-SONG = "bpm 100\ntwinkle C4:1 C4:1\ntwinkle G4:1 G4:1\nlittle A4:1 A4:1\nstar G4:2\n"
+SONG = "%bpm 100\ntwinkle C4:1 C4:1\ntwinkle G4:1 G4:1\nlittle A4:1 A4:1\nstar G4:2\n"
+PIECE = {
+    "room": "card",
+    "style": {"glide": 9, "dynamics": 1.0, "breathiness": 0.6, "breath": 0.8},
+    "parts": [
+        {"name": "High", "voice": "cora", "song": "%bpm 90\nsing C5:1\nwith B4:1\nme C5:2\n%rest 1\n"},
+        {"name": "Low", "voice": "ben", "song": "%bpm 90\nsing E4:1\nwith G4:1\nme E4:2\n%rest 1\n"},
+    ],
+}
 count = 0
 
 
@@ -108,15 +116,15 @@ def protocol(lip, c):
     ok("notifications get no answer; ping does")
 
     tools = c.ask("tools/list")["result"]["tools"]
-    want([t["name"] for t in tools] == ["voices", "devices", "say", "sing"], f"tools: {[t['name'] for t in tools]}")
+    want([t["name"] for t in tools] == ["voices", "devices", "choirs", "say", "sing", "choir"], f"tools: {[t['name'] for t in tools]}")
     for t in tools:
         want(t["description"] and t["inputSchema"]["type"] == "object", f"{t['name']}: its description and schema")
         for k, v in t["inputSchema"]["properties"].items():
             want(v.get("description") and v.get("type"), f"{t['name']}.{k}: its description and type")
         a = t["annotations"]
         want(t["title"] == a["title"] and all(isinstance(a[k], bool) for k in ("readOnlyHint", "destructiveHint", "openWorldHint")), f"{t['name']}: its title and annotations")
-        want(a["readOnlyHint"] == (t["name"] in ("voices", "devices")) and a["destructiveHint"] != a["readOnlyHint"] and not a["openWorldHint"], f"{t['name']}: annotated {a}")
-    ok("four tools, every argument described; the two that list are marked read-only, the two that make sound are not")
+        want(a["readOnlyHint"] == (t["name"] in ("voices", "devices", "choirs")) and a["destructiveHint"] != a["readOnlyHint"] and not a["openWorldHint"], f"{t['name']}: annotated {a}")
+    ok("six tools, every argument described; the three that list are marked read-only, the three that make sound are not")
 
     c.send("{not json")
     r = c.read()
@@ -167,14 +175,50 @@ def tools(lip, c, folder, elsewhere):
     ok("say, again: a new name, nothing replaced")
 
     for q in lip.QUALITIES:
-        text, error = c.call("sing", score=SONG, voice="hal", quality=q, shift=-12, motion="wide", seed=3, vibrato_delay=0.1, glide=12, dynamics=0.5, breathiness=1.2, diction=True, out=f"song-{q}.wav")
+        text, error = c.call("sing", score=SONG, voice="hal", quality=q, shift=-12, motion="wide", seed=3, vibrato_delay=0.1, glide=12, dynamics=0.5, breathiness=1.2, diction=[], out=f"song-{q}.wav")
         want(not error, text)
         written(text, os.path.join(folder, f"song-{q}.wav"),
-                lip.sing(SONG, "hal", quality=q, shift=-12.0, motion="wide", seed=3, vibrato_delay=0.1, glide=12, dynamics=0.5, breathiness=1.2, diction=True), f"sing, {q}, to a name in the folder")
+                lip.sing(SONG, "hal", quality=q, shift=-12.0, motion="wide", seed=3, vibrato_delay=0.1, glide=12, dynamics=0.5, breathiness=1.2, diction=[]), f"sing, {q}, to a name in the folder")
+
+    text, error = c.call("choirs")
+    want(not error and json.loads(text) == lip.choirs(), f"choirs: {text}")
+    ok(f"choirs: {len(lip.choirs())}, as the package lists them")
+
+    def beside(text, path, clip, what):
+        j = os.path.splitext(path)[0] + ".json"
+        want(text.endswith(f", written to {path}, its timing to {j}"), f"{what}: answered {text!r}")
+        want(read(path) == clip.wav() and lip.load_timing(j) == json.loads(json.dumps(clip.timing)), f"{what}: the files are not the package's")
+        ok(f"{what}: {text.split(', written')[0]}, the package's own bytes and timing")
+
+    text, error = c.call("choir", piece=json.dumps(PIECE), quality="fast", seed=4, room="drier", loose=0.5, glide=12, out="piece.wav", timing=True)
+    want(not error, text)
+    clip = lip.choir(PIECE, quality="fast", seed=4, room="drier", loose=0.5, glide=12)
+    want(clip.channels == 2 and [p["voice"] for p in clip.timing["parts"]] == ["cora", "ben"], f"a written choir: {clip}")
+    beside(text, os.path.join(folder, "piece.wav"), clip, "choir, written as JSON, to a name in the folder")
+
+    name = "Ah, Poor Bird"
+    text, error = c.call("choir", piece=name, quality="fast", motion="none", timing=True)
+    want(not error, text)
+    path = text.split("written to ")[1].split(", its timing")[0]
+    want(os.path.dirname(path) == folder and os.path.basename(path).startswith("choir-ah-poor-bird-"), f"choir, no place given: {path}")
+    beside(text, path, lip.choir(name, quality="fast", motion="none"), "choir, by name, into the server's folder")
+
+    text, error = c.call("say", text="Hello there, this is the server.", quality="fast", out="timed.wav", timing=True)
+    want(not error, text)
+    beside(text, os.path.join(folder, "timed.wav"), lip.say("Hello there, this is the server.", quality="fast"), "say, with its timing")
 
     before = sorted(os.listdir(folder))
-    c.refused("every: 3 syllables (EH1 V ER0 IY0), 2 notes", "sing", score="bpm 90\nevery C4:1 D4:1\n", quality="fast")
-    c.refused("line 2: g4: not a note", "sing", score="bpm 100\nstar g4:2\n", quality="fast")
+    c.refused("no choir 'Kumbaya'", "choir", piece="Kumbaya", quality="fast")
+    c.refused("a choir has parts", "choir", piece='{"room": "card"}', quality="fast")
+    c.refused("High: every: 3 syllables", "choir", piece=json.dumps({**PIECE, "parts": [{**PIECE["parts"][0], "song": "%bpm 90\nevery C4:1 D4:1\n"}, PIECE["parts"][1]]}), quality="fast")
+    c.refused("no voice 'zed'", "choir", piece=json.dumps({**PIECE, "parts": [{**PIECE["parts"][0], "voice": "zed"}]}), quality="fast")
+    c.refused("room is \"cathedral\"", "choir", piece=name, room="cathedral")
+    if not (sys.platform == "linux" and not shutil.which("aplay")):
+        there = lip.devices()
+        if there:
+            c.refused("this call only plays", "say", text="x", device=there[0]["id"], timing=True)
+    c.refused("every: 3 syllables (EH1 V AH1 R IY1), 2 notes", "sing", score="%bpm 90\nevery C4:1 D4:1\n", quality="fast")
+    c.refused("line 2: g4: not a note", "sing", score="%bpm 100\nstar g4:2\n", quality="fast")
     c.refused("ssml: one root element", "say", text="No speak element.", ssml=True)
     c.refused("no voice 'zed'", "say", text="x", voice="zed")
     c.refused("quality is \"best\"", "say", text="x", quality="best")

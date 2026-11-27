@@ -12,27 +12,23 @@
 //! the voicing is the score model's pitch
 //! head on those durations, every vowel frame voiced and every voiceless consonant's frame unvoiced,
 //! the space its word takes before it too (from TAIL frames in, where a sound runs into it);
-//! the rests, the lead-in and the end are silent.
-//! With `Style::diction` a held AY or OY is sung as a singer holds it (WIDE): its open vowel for the
-//! note and its closing vowel (CLOSES) in the note's last frames, where the diphthong's own token, stretched
-//! over a note, sits between the two for the whole of it (a held "night" an "eh").
+//! the rests, the lead-in and the end are silent, a rest after a voiceless consonant from its
+//! release's end (RELEASED).
+//! How a word's sounds are sung where that is a choice is the song's diction (diction.rs): its
+//! rules give each word's phones, a held vowel's close (a second vowel in the note's last frames)
+//! and the dip through a voiced stop.
 //! Dynamics (optional) raise a note with its height in its phrase, swell a long note and let a
 //! phrase's last note fall away, as gain and brightness on the envelope (`louden`). The ring
 //! (optional, `ring`) is the singer's formant: the sung vowels' envelope raised about RING_HZ.
 //!
-//! A song file, a line each (a line starting # is a comment):
-//!   bpm 96
-//!   rest 0.5              (beats of silence)
-//!   hum D3:2              (a word and its notes, NOTE:BEATS each; NOTE is C4, F#3, Bb2 or MIDI)
-//!   you D3:1+E3:0.5       (notes joined by + share a syllable, its vowel moving through them)
-//!   vibrato 0 1.5:3       (the vibrato's size from this beat on, against the voice's own: VALUE
-//!                          jumps to it, VALUE:BEATS glides to it over as many beats; the line
-//!                          takes no time, and the last size holds)
+//! A song's text is read by song.rs (its head has the format; docs/release/repo/SCORE.md the spec).
 
+use crate::diction::{self, is_vowel, At, Ph, Rules, Who};
 use crate::dsp::{HOP, SR};
 use crate::front::{self, Phonemizer, SPACE};
 use crate::rng::Rng;
 use crate::score::{Score, ScoreModel};
+use crate::song;
 use crate::vocoder::{Frames, N_AP, N_ENV};
 use crate::weights::{err, Error, Result, Weights};
 
@@ -44,6 +40,12 @@ const LEAD: usize = 10;
 /// pause token at full level).
 const RELEASE: usize = 8;
 const SILENCE_DB: f32 = 80.0;
+/// A phrase's last voiceless consonant ends in the pause after it: the model draws a stop's
+/// closure through its own frames and on, its burst 7 to 12 frames into the pause, and a
+/// fricative's hiss rising through the pause's first frames (a T before a pause is 2 to 4 frames,
+/// an S 2 or 3). The pause's first RELEASED frames sound, unvoiced, and the silence is released
+/// into from there; cut at the consonant's end a held "night" has no T and "peace" no S.
+const RELEASED: usize = 12;
 /// After a rest, the space a word's first consonant takes is that consonant's. Before a voiced one
 /// it is its voice, begun (a stop's voice bar too), and is left as sung through its last VOICE
 /// frames; what a longer space has before those (to 0.5 s) is the decoder's murmur, 30 to 40 dB
@@ -79,21 +81,6 @@ const MIN_VOWEL: usize = 3;
 const CLOCKED_VOWEL: usize = 3;
 /// The frames a vowel keeps (or half its note) when its consonants are lengthened.
 const LENGTHENED_VOWEL: usize = 8;
-/// A diphthong that a note stretches wrong, with the vowel a singer holds for it. (AW, EY and OW
-/// hold their first vowel as they are.)
-const WIDE: [(&str, &str); 2] = [("AY1", "AA1"), ("OY1", "AO1")];
-/// The vowel that closes it: the lax IH. Closed on a firm IY every held "eye" is an Irish or Scottish
-/// one to the ear, in every voice. Before another vowel it is IY ("denial"), where IH is swallowed.
-const CLOSES: &str = "IH1";
-const CLOSES_INTO_A_VOWEL: &str = "IY1";
-/// An AY before an L or R keeps its own token: the model holds that one open as it is, at any
-/// length, and sung in two the L or R swallows the close and darkens the open vowel (a held "I'll"
-/// an "oil").
-const LEFT: (&str, [&str; 2]) = ("AY1", ["L", "R"]);
-/// A syllable of this many frames or more sings its WIDE diphthong in two; a shorter one is spoken's.
-const HELD: usize = 24;
-/// The closing vowel's frames, at most a third of the two vowels'.
-const CLOSE: usize = 10;
 const BOS: usize = 1;
 const EOS: usize = 2;
 const COMMA: usize = 4;
@@ -119,7 +106,6 @@ const CLOSED: [&str; 8] = ["P", "T", "K", "B", "D", "G", "CH", "JH"];
 /// down, 1.6 up). STOP_CLOSE is stretched over the closure (the space and the stop), STOP_OPEN is
 /// the vowel's first frames. On a pitch held level through the closure the latent voice sings on
 /// through it and no stop is heard (boat as vote).
-const VOICED_STOPS: [&str; 3] = ["B", "D", "G"];
 const VOICED_INTO: [&str; 11] = ["M", "N", "NG", "L", "R", "W", "Y", "V", "DH", "Z", "ZH"];
 const STOP_CLOSE: [f32; 10] = [-0.58, -1.67, -2.06, -2.45, -2.70, -2.52, -1.55, 0.21, 1.60, 1.55];
 const STOP_OPEN: [f32; 6] = [0.98, 0.65, 0.41, 0.25, 0.13, 0.05];
@@ -301,6 +287,9 @@ pub struct Song {
     /// keep (ScoreModel::common_durations), not the singer's own, so that a section's consonants land
     /// as one and no one's vowel lies under another's S.
     pub together: bool,
+    /// Each item's phones where its line writes them (`word{...}`).
+    pub spelled: Vec<Option<Vec<Ph>>>,
+    pub diction: Rules,
 }
 
 /// A value written along a song, as a pedal's is beside a part's notes: its points (beat, value)
@@ -333,106 +322,44 @@ impl Lane {
     }
 }
 
-/// A lane's step: VALUE, or VALUE:BEATS.
-fn step(s: &str) -> Result<(f32, Option<f32>)> {
-    let (v, over) = match s.split_once(':') {
-        Some((v, b)) => (v, Some(beats(b)?)),
-        None => (s, None),
-    };
-    match v.parse::<f32>() {
-        Ok(x) if x >= 0.0 && x.is_finite() => Ok((x, over)),
-        _ => err(format!("{s}: a size is VALUE or VALUE:BEATS, the value 0 or more")),
-    }
-}
-
-/// A note name (C4 is MIDI 60; sharps #, flats b) or a MIDI number.
-pub fn midi(s: &str) -> Result<f32> {
-    if let Ok(v) = s.parse::<f32>() {
-        return if (0.0..=127.0).contains(&v) { Ok(v) } else { err(format!("{s}: MIDI 0 to 127")) };
-    }
-    let b = s.as_bytes();
-    let step = match b.first() {
-        Some(b'C') => 0,
-        Some(b'D') => 2,
-        Some(b'E') => 4,
-        Some(b'F') => 5,
-        Some(b'G') => 7,
-        Some(b'A') => 9,
-        Some(b'B') => 11,
-        _ => return err(format!("{s}: not a note (C4, F#3, Bb2 or a MIDI number)")),
-    };
-    let mut i = 1;
-    let mut acc = 0;
-    while i < b.len() && (b[i] == b'#' || b[i] == b'b') {
-        acc += if b[i] == b'#' { 1 } else { -1 };
-        i += 1;
-    }
-    let oct: i32 = s[i..].parse().map_err(|_| Error(format!("{s}: not a note (C4, F#3, Bb2 or a MIDI number)")))?;
-    let m = 12 * (oct + 1) + step + acc;
-    if !(0..=127).contains(&m) {
-        return err(format!("{s}: outside MIDI 0 to 127"));
-    }
-    Ok(m as f32)
-}
-
-fn beats(s: &str) -> Result<f32> {
-    match s.parse::<f32>() {
-        Ok(v) if v > 0.0 && v.is_finite() => Ok(v),
-        _ => err(format!("{s}: beats must be a positive number")),
-    }
-}
+pub use crate::song::midi;
 
 impl Song {
     pub fn parse(text: &str) -> Result<Song> {
-        let (mut bpm, mut items, mut together) = (None, Vec::new(), false);
-        // the beat a line starts on, as `plan` counts it
-        let (mut beat, mut vibrato) = (0.0f32, Lane::default());
-        for (n, line) in text.lines().enumerate() {
-            let line = line.trim();
-            if line.is_empty() || line.starts_with('#') {
-                continue;
-            }
-            let at = |e: Error| Error(format!("line {}: {}", n + 1, e.0));
-            let f: Vec<&str> = line.split_whitespace().collect();
-            match f[0] {
-                "bpm" if f.len() == 2 => {
-                    if bpm.replace(beats(f[1]).map_err(at)?).is_some() {
-                        return Err(at(Error("bpm given twice".into())));
+        Song::parse_under(text, Rules::default())
+    }
+
+    /// The song (song::read), its %diction lines read after `diction` (a rules file's, a caller's).
+    pub fn parse_under(text: &str, mut diction: Rules) -> Result<Song> {
+        let read = song::read(text)?;
+        let (mut items, mut together, mut written, mut vibrato) = (Vec::new(), false, Vec::new(), Lane::default());
+        // the beat a line starts on as `plan` counts it: summed as it sums, in f32
+        let mut beat = 0.0f32;
+        for l in &read.lines {
+            let at = |e: Error| Error(format!("line {}: {}", l.n, e.0));
+            match &l.line {
+                song::Line::Bpm(_) => {}
+                song::Line::Together => together = true,
+                song::Line::Diction(f) => diction.read(f).map_err(|e| at(Error(format!("%diction {}: {}", f.join(" "), e.0))))?,
+                song::Line::Rest(b) => {
+                    beat += *b as f32;
+                    items.push(Item::Rest(*b as f32));
+                    written.push(None);
+                }
+                song::Line::Vibrato(sizes) => vibrato.write(beat, &sizes.iter().map(|z| (z.value as f32, z.over.map(|b| b as f32))).collect::<Vec<_>>()),
+                song::Line::Word { word, braces, notes } => {
+                    let phones = braces.map(|b| diction::phones(b.split(',')).map_err(|e| at(Error(format!("{word}{{{b}}}: {}", e.0))))).transpose()?;
+                    // a note's beats read as f32 from its text, not rounded twice by way of f64
+                    let notes: Vec<Vec<Note>> = notes.iter().map(|s| s.iter().map(|x| Note { midi: x.midi, beats: x.beats_text.parse().unwrap_or(x.beats as f32) }).collect()).collect();
+                    for x in notes.iter().flatten() {
+                        beat += x.beats;
                     }
+                    items.push(Item::Word(word.to_string(), notes));
+                    written.push(phones);
                 }
-                "rest" if f.len() == 2 => {
-                    let b = beats(f[1]).map_err(at)?;
-                    beat += b;
-                    items.push(Item::Rest(b));
-                }
-                "bpm" | "rest" => return Err(at(Error(format!("{} takes one number", f[0])))),
-                "together" if f.len() == 1 => together = true,
-                "vibrato" if f.len() >= 2 => {
-                    let steps = f[1..].iter().map(|x| step(x)).collect::<Result<Vec<_>>>().map_err(at)?;
-                    vibrato.write(beat, &steps);
-                }
-                "vibrato" => return Err(at(Error("vibrato takes its sizes, VALUE or VALUE:BEATS each".into()))),
-                w if f.len() >= 2 => {
-                    let mut notes = Vec::new();
-                    for g in &f[1..] {
-                        let mut syl = Vec::new();
-                        for x in g.split('+') {
-                            let (m, b) = x.split_once(':').ok_or_else(|| at(Error(format!("{x}: a note is NOTE:BEATS"))))?;
-                            syl.push(Note { midi: midi(m).map_err(at)?, beats: beats(b).map_err(at)? });
-                            beat += syl.last().unwrap().beats;
-                        }
-                        notes.push(syl);
-                    }
-                    items.push(Item::Word(w.to_string(), notes));
-                }
-                w => return Err(at(Error(format!("{w}: a word takes its notes, NOTE:BEATS each")))),
             }
         }
-        let bpm = bpm.ok_or_else(|| Error("the song has no bpm line".into()))?;
-        if !items.iter().any(|i| matches!(i, Item::Word(..))) {
-            return err("the song has no words");
-        }
-        Ok(Song { bpm, items, vibrato, together })
+        Ok(Song { bpm: read.bpm as f32, items, vibrato, together, spelled: written, diction })
     }
 }
 
@@ -451,9 +378,8 @@ pub struct Style {
     pub dynamics: f32,
     /// The consonants' durations but the stops' and affricates' against the score model's (the vowels give the time up).
     pub consonants: f32,
-    /// Sung diction: every vowel stressed (an unstressed one, held, fades), an unstressed ER as AH
-    /// and R.
-    pub diction: bool,
+    /// Who sings: what the song's diction rules are for (`for=`).
+    pub who: Who,
     /// The sung vowels' aperiodicity scaled: under 1 for less breath noise in them.
     pub breathiness: f32,
     /// A trained singer's pitch motion on every note, in place of the vibrato: the singer and the
@@ -468,8 +394,9 @@ pub struct Style {
 struct Syl {
     onset: Vec<usize>,
     vowel: usize,
-    /// Whether the token after the vowel is its closing vowel (WIDE), which the notes hold too.
-    closed: bool,
+    /// Where the token after the vowel is its closing vowel, which the notes hold too: the close's
+    /// frames, and whether exactly those (written) or at most a third of the two tokens'.
+    closed: Option<(usize, bool)>,
     coda: Vec<usize>,
     start: usize, // the beat, frames from the song's start
     end: usize,
@@ -540,11 +467,16 @@ pub struct Plan {
     pub gain: Vec<f32>,
     pub sung: Vec<f32>,
     pub notes: Vec<(String, f32, std::ops::Range<usize>)>,
+    /// Each token: whether it is the close of the vowel before it.
+    pub closes: Vec<bool>,
+    /// Each token: the song's diction rules (Rules::lines) that gave its phone and its dip.
+    pub by: Vec<(Option<usize>, Option<usize>)>,
 }
 
 impl Plan {
     /// The silent spans a singer could breathe in, frames from the song's start: the lead-in and
-    /// each rest, a rest's with what its next word's space holds silent (`emerge`).
+    /// each rest, a rest's with what its next word's space holds silent (`emerge`) and from the end
+    /// of what a voiceless consonant before it sounds of it (RELEASED).
     pub fn rests(&self) -> Vec<std::ops::Range<usize>> {
         let mut out = Vec::new();
         let mut t = 0;
@@ -552,7 +484,8 @@ impl Plan {
             if (k == BOS || k == COMMA) && d > 0 {
                 let space = k == COMMA && self.tokens.get(i + 1) == Some(&SPACE);
                 let held = space.then(|| emerge(self.tokens[i + 2], self.durations[i + 1])).flatten().map_or(0, |(kept, _)| self.durations[i + 1] - kept);
-                out.push(t..t + d + held);
+                let released = if i > 0 && VOICELESS.contains(&front::symbol(self.tokens[i - 1])) { RELEASED.min(d) } else { 0 };
+                out.push(t + released..t + d + held);
             }
             t += d;
         }
@@ -587,6 +520,8 @@ impl Plan {
             gain: self.gain[s..].to_vec(),
             sung: self.sung[s..].to_vec(),
             notes: self.notes.iter().filter(|(_, _, r)| r.end > s).map(|(w, m, r)| (w.clone(), *m, r.start.saturating_sub(s)..r.end - s)).collect(),
+            closes: self.closes[k..].to_vec(),
+            by: self.by[k..].to_vec(),
         }
     }
 }
@@ -715,23 +650,6 @@ fn fit(parts: &mut [usize], budget: usize, what: &str) -> Result<()> {
     Ok(())
 }
 
-/// Phones as sung: each vowel takes primary stress, and an unstressed ER is AH and R.
-pub fn sung_diction(phones: &[&'static str]) -> Result<Vec<&'static str>> {
-    let stressed = |v: &str| {
-        let p = format!("{v}1");
-        front::symbol_id(&p).map(front::symbol).ok_or_else(|| Error(format!("no phone {p}")))
-    };
-    let mut out = Vec::new();
-    for &p in phones {
-        match p.strip_suffix(['0', '2']) {
-            Some("ER") if p.ends_with('0') => out.extend(["AH1", "R"]),
-            Some(v) => out.push(stressed(v)?),
-            None => out.push(p),
-        }
-    }
-    Ok(out)
-}
-
 /// The song's tokens, durations, pitch, voicing and dressing for `speaker`.
 pub fn plan(m: &ScoreModel, ph: &mut Phonemizer, song: &Song, speaker: usize, st: &Style) -> Result<Plan> {
     let fpb = FPS * 60.0 / song.bpm;
@@ -740,6 +658,9 @@ pub fn plan(m: &ScoreModel, ph: &mut Phonemizer, song: &Song, speaker: usize, st
     let mut names: Vec<String> = Vec::new();
     // each line's word as the front end writes it, a rest as a comma, for heteronyms' senses
     let (mut said, mut low) = (Vec::new(), Vec::new());
+    let dn = &song.diction;
+    // each token's dip, and the rules (Rules::lines) that gave its phone and its dip
+    let (mut dips, mut by) = (vec![0.0f32], vec![(None, None)]);
     for item in &song.items {
         match item {
             Item::Word(w, _) => {
@@ -759,44 +680,62 @@ pub fn plan(m: &ScoreModel, ph: &mut Phonemizer, song: &Song, speaker: usize, st
     for (k, item) in song.items.iter().enumerate() {
         match item {
             Item::Word(w, notes) => {
-                let mut phones = ph.phones_in(&said[k], &low, k)?;
-                if st.diction {
-                    phones = sung_diction(&phones)?;
+                let rest = |i: Option<&Item>| !matches!(i, Some(Item::Word(..)));
+                let at = At { who: &st.who, word: &low[k], after_rest: rest(k.checked_sub(1).map(|i| &song.items[i])), before_rest: rest(song.items.get(k + 1)) };
+                // the word as sung: as its line writes it, or its phones by the song's diction, each
+                // syllable's frames told where the dictionary's syllables are the notes'
+                let sung = match &song.spelled[k] {
+                    Some(ps) => dn.written(&at, ps),
+                    None => {
+                        let phones = ph.phones_in(&said[k], &low, k)?;
+                        let mut b = beat;
+                        let held: Vec<usize> = notes
+                            .iter()
+                            .map(|g| {
+                                let from = frame(b);
+                                b += g.iter().map(|n| n.beats).sum::<f32>();
+                                frame(b) - from
+                            })
+                            .collect();
+                        let fits = phones.iter().filter(|p| is_vowel(p)).count() == notes.len();
+                        dn.sing(&at, &phones, fits.then_some(&held[..]))
+                    }
+                };
+                // a close with the vowel before it
+                let (mut phones, mut closes, mut drawn) = (Vec::new(), Vec::new(), Vec::new());
+                for p in &sung {
+                    match &p.close {
+                        Some(c) => *closes.last_mut().unwrap() = Some((p.phone, c.frames, c.exact)),
+                        None => {
+                            phones.push(p.phone);
+                            closes.push(None);
+                            drawn.push((p.dip, (p.by, p.dip_by)));
+                        }
+                    }
                 }
-                let vowels: Vec<usize> = (0..phones.len()).filter(|&i| phones[i].ends_with(|c: char| c.is_ascii_digit())).collect();
+                let vowels: Vec<usize> = (0..phones.len()).filter(|&i| is_vowel(phones[i])).collect();
                 if vowels.len() != notes.len() {
                     return err(format!("{w}: {} syllables ({}), {} notes", vowels.len(), phones.join(" "), notes.len()));
                 }
                 if tok.len() > 1 {
                     tok.push(SPACE);
+                    dips.push(0.0);
+                    by.push((None, None));
                 }
                 let base = tok.len();
-                // each phone's place among the word's tokens, a held diphthong's two vowels at its own
+                // each phone's place among the word's tokens, a closed vowel's two at its own
                 let mut place = Vec::with_capacity(phones.len());
-                let mut closed = vec![false; vowels.len()];
-                let (mut n, mut b) = (0, beat);
+                let mut closed = vec![None; vowels.len()];
                 for (i, p) in phones.iter().enumerate() {
-                    place.push(base + n);
-                    let wide = vowels.iter().position(|&v| v == i).and_then(|j| {
-                        let from = frame(b);
-                        b += notes[j].iter().map(|n| n.beats).sum::<f32>();
-                        let held = st.diction && frame(b) - from >= HELD;
-                        // an AY before an L or R is left as it is (LEFT)
-                        let left = *p == LEFT.0 && phones.get(i + 1).is_some_and(|q| LEFT.1.contains(q));
-                        WIDE.iter().find(|w| held && !left && w.0 == *p).map(|w| (j, w))
-                    });
-                    match wide {
-                        Some((j, &(_, open))) => {
-                            let vowel_next = phones.get(i + 1).is_some_and(|q| q.ends_with(|c: char| c.is_ascii_digit()));
-                            let close = if vowel_next { CLOSES_INTO_A_VOWEL } else { CLOSES };
-                            tok.extend([open, close].map(|v| front::symbol_id(v).unwrap()));
-                            closed[j] = true;
-                            n += 2;
-                        }
-                        None => {
-                            tok.push(front::symbol_id(p).unwrap());
-                            n += 1;
-                        }
+                    place.push(tok.len());
+                    tok.push(front::symbol_id(p).unwrap());
+                    dips.push(drawn[i].0);
+                    by.push(drawn[i].1);
+                    if let Some((close, frames, exact)) = closes[i] {
+                        tok.push(front::symbol_id(close).unwrap());
+                        dips.push(0.0);
+                        by.push((drawn[i].1 .0, None));
+                        closed[vowels.iter().position(|&v| v == i).unwrap()] = Some((frames, exact));
                     }
                 }
                 for (j, (&v, group)) in vowels.iter().zip(notes).enumerate() {
@@ -831,6 +770,8 @@ pub fn plan(m: &ScoreModel, ph: &mut Phonemizer, song: &Song, speaker: usize, st
                     if s.rest.is_none() {
                         s.rest = Some(tok.len());
                         tok.push(COMMA);
+                        dips.push(0.0);
+                        by.push((None, None));
                     }
                 }
             }
@@ -842,6 +783,8 @@ pub fn plan(m: &ScoreModel, ph: &mut Phonemizer, song: &Song, speaker: usize, st
         }
     }
     tok.push(EOS);
+    dips.push(0.0);
+    by.push((None, None));
 
     let states = m.states(&tok)?;
     let h = m.spoken(states.clone(), speaker)?;
@@ -934,14 +877,19 @@ pub fn plan(m: &ScoreModel, ph: &mut Phonemizer, song: &Song, speaker: usize, st
         }
         let ahead = if s.rest.is_none() { next_on.iter().sum::<usize>() } else { 0 };
         dur[s.vowel] = s.end - s.start - coda.iter().sum::<usize>() - ahead;
-        if s.closed {
-            let close = CLOSE.min(dur[s.vowel] / 3);
+        if let Some((n, exact)) = s.closed {
+            if exact && dur[s.vowel] < n + MIN_VOWEL {
+                return err(format!("{}: a close of {} ms in a vowel of {}", names[k], n * diction::FRAME_MS, dur[s.vowel] * diction::FRAME_MS));
+            }
+            let close = if exact { n } else { n.min(dur[s.vowel] / 3) };
             dur[s.vowel] -= close;
             dur[s.vowel + 1] = close;
         }
         onset = next_on;
     }
-    *dur.last_mut().unwrap() = LEAD;
+    // a song ending on a voiceless consonant ends after its release
+    let ends = tok.len() - 2;
+    *dur.last_mut().unwrap() = LEAD + if VOICELESS.contains(&front::symbol(tok[ends])) { RELEASED } else { 0 };
 
     let t: usize = dur.iter().sum();
     let mut at = vec![0usize; tok.len() + 1];
@@ -951,7 +899,7 @@ pub fn plan(m: &ScoreModel, ph: &mut Phonemizer, song: &Song, speaker: usize, st
     // each note's vowel frames: a syllable's later notes start their beats after its vowel's start
     let (mut spans, mut phrase, mut of) = (Vec::new(), 0, Vec::new());
     for (s, name) in syls.iter().zip(&names) {
-        let (v0, v1) = (at[s.vowel], at[s.vowel + 1 + s.closed as usize]);
+        let (v0, v1) = (at[s.vowel], at[s.vowel + 1 + s.closed.is_some() as usize]);
         for (k, &(m, b)) in s.notes.iter().enumerate() {
             let a = if k == 0 { v0 } else { b - s.start + v0 };
             let e = s.notes.get(k + 1).map_or(v1, |n| n.1 - s.start + v0);
@@ -999,26 +947,32 @@ pub fn plan(m: &ScoreModel, ph: &mut Phonemizer, song: &Song, speaker: usize, st
             voicing[f] = Voicing::Vowel;
         }
     }
-    // a word's first voiced stop inside a phrase: the pitch dips through its closure and rises at its release
-    let vowel = |t: usize| front::symbol(t).ends_with(|c: char| c.is_ascii_digit());
+    // a dipped consonant (the diction's) between voiced sounds: the pitch dips through its closure
+    // and rises at its release, a word's first inside a phrase through the space before it too,
+    // another through its own frames
+    let vowel = |t: usize| is_vowel(front::symbol(t));
+    let voiced = |t: usize| vowel(t) || VOICED_INTO.contains(&front::symbol(t));
     for i in 2..tok.len() - 1 {
-        let into = vowel(tok[i - 2]) || VOICED_INTO.contains(&front::symbol(tok[i - 2]));
-        if !VOICED_STOPS.contains(&front::symbol(tok[i])) || tok[i - 1] != SPACE || dur[i - 1] < STOP_SPACE || !into || !vowel(tok[i + 1]) {
+        let first = tok[i - 1] == SPACE && dur[i - 1] >= STOP_SPACE && voiced(tok[i - 2]) && vowel(tok[i + 1]);
+        let inside = voiced(tok[i - 1]) && dur[i] >= 2;
+        if dips[i] == 0.0 || !(first || inside) {
             continue;
         }
-        let (s0, v0) = (at[i - 1], at[i + 1]);
+        let (s0, v0) = (if first { at[i - 1] } else { at[i] }, at[i + 1]);
         let n = v0 - s0;
         for f in 0..n {
             let x = f as f32 * (STOP_CLOSE.len() - 1) as f32 / (n - 1) as f32;
             let (j, w) = (x as usize, x.fract());
-            semi[s0 + f] += STOP_CLOSE[j] + w * (STOP_CLOSE[(j + 1).min(STOP_CLOSE.len() - 1)] - STOP_CLOSE[j]);
+            semi[s0 + f] += dips[i] * (STOP_CLOSE[j] + w * (STOP_CLOSE[(j + 1).min(STOP_CLOSE.len() - 1)] - STOP_CLOSE[j]));
         }
-        for (f, &d) in STOP_OPEN.iter().enumerate().take(dur[i + 1]) {
-            semi[v0 + f] += d;
+        if vowel(tok[i + 1]) {
+            for (f, &d) in STOP_OPEN.iter().enumerate().take(dur[i + 1]) {
+                semi[v0 + f] += dips[i] * d;
+            }
         }
     }
     // a word's first vowel after a vowel, inside a phrase: the pitch dips just before it
-    let closes: Vec<bool> = (0..tok.len()).map(|i| syls.iter().any(|s| s.closed && s.vowel + 1 == i)).collect();
+    let closes: Vec<bool> = (0..tok.len()).map(|i| syls.iter().any(|s| s.closed.is_some() && s.vowel + 1 == i)).collect();
     for i in 2..tok.len() {
         // a held diphthong's two vowels are the one vowel before
         let before = dur[i - 2] + if closes[i - 2] { dur[i - 3] } else { 0 };
@@ -1052,9 +1006,16 @@ pub fn plan(m: &ScoreModel, ph: &mut Phonemizer, song: &Song, speaker: usize, st
             from = None;
             continue;
         }
-        let a = *from.get_or_insert(at[i]);
+        let a = *from.get_or_insert_with(|| {
+            let last = i > 0 && VOICELESS.contains(&front::symbol(tok[i - 1]));
+            at[i] + if last { RELEASED } else { 0 }
+        });
         let (kept, ramp) = up.unwrap_or((0, 0));
         for f in at[i]..at[i + 1] {
+            if f < a {
+                voicing[f] = Voicing::Voiceless;
+                continue;
+            }
             let k = f - a;
             let down = if a == 0 || k >= RELEASE {
                 SILENCE_DB
@@ -1095,7 +1056,7 @@ pub fn plan(m: &ScoreModel, ph: &mut Phonemizer, song: &Song, speaker: usize, st
         dynamics(&marked, t, st.dynamics)
     };
     let notes = spans.into_iter().map(|(n, m, r)| (n, m + st.shift, r)).collect();
-    Ok(Plan { tokens: tok, states, h, durations: dur, lf0, told: Vec::new(), voicing, quiet, breath, gain, sung, notes })
+    Ok(Plan { tokens: tok, states, h, durations: dur, lf0, told: Vec::new(), voicing, quiet, breath, gain, sung, notes, closes, by })
 }
 
 /// A plan's frames' voicing, 0 or 1, on its speaker's frame states hx; and the vowels' frames, how

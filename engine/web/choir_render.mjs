@@ -29,11 +29,15 @@ if (!site || !outDir) {
 }
 const moves = rest.includes("--moves"), only = rest.filter((a) => a !== "--moves");
 const { Choir, SR } = await import(join(web, "choir.js"));
+const { Engine } = await import(join(web, "lipservice.js"));
+const { setEngine } = await import(join(web, "room.js"));
 const { Deck } = await import(join(web, "deck.js"));
 const { Conductor } = await import(join(web, "conduct.js"));
 const { CHOIRS, arrange } = await import(join(web, "choirs.js"));
 const { readFileSync } = await import("node:fs");
 const voices = JSON.parse(readFileSync(join(site, "models/voices.json"), "utf8"));
+// the mixer and the room run in an engine on this thread
+setEngine(await Engine.create(readFileSync(join(site, "lipservice.wasm"))));
 
 // player.js as the browser runs it
 let Player = null;
