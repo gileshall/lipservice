@@ -318,16 +318,6 @@ lipservice choir duet.json --quality fast -o duet.wav
 lipservice choir duet.json --quality fast --room drier --loose 0.5 -o duet-tighter.wav
 ```
 
-Some pieces come with it, rounds and folk songs in parts and a barbershop tag, and are sung by
-name:
-
-```bash
-lipservice choirs
-lipservice choir "Ah, Poor Bird" --quality fast -o bird.wav
-```
-
-In Python, `lip.choirs()` lists them and `lip.choir("Ah, Poor Bird")` sings one.
-
 How a piece is sung can be changed without rewriting it, in Python as keywords and on the
 command line as flags of the same names (`--voices cora,,ben` gives a voice a part, an empty
 place keeping the part's own):

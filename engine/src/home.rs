@@ -406,7 +406,7 @@ mod tests {
     #[test]
     fn a_quality_keeps_its_own_files_and_what_everyone_reads() {
         let f = |n: &str| format!("\"{n}\":{{\"size\":1,\"sha256\":\"{}\"}}", "0".repeat(64));
-        let names = ["base.lsw", "choirs.json", "fast/vocoder.lsw", "fast/voices/ada.lsw", "hifi/vox.lsw", "hifi/voices/ada.lsw", "motion/wide.lsw", "page/breaths.bin", "page/breaths.json", "voices/ada.lsw"];
+        let names = ["base.lsw", "fast/vocoder.lsw", "fast/voices/ada.lsw", "hifi/vox.lsw", "hifi/voices/ada.lsw", "motion/wide.lsw", "page/breaths.bin", "page/breaths.json", "voices/ada.lsw"];
         let text = format!(
             "{{\"format\":1,\"set\":\"s\",\"voices\":[{{\"name\":\"ada\",\"id\":\"19\",\"sex\":\"F\",\"source\":\"x\"}}],\"files\":{{{}}}}}",
             names.map(f).join(",")
@@ -415,9 +415,9 @@ mod tests {
         let home = Home { dir: PathBuf::from("."), fetches: false, set, voices, files, text };
         // the name people call a voice by, and its name in the models
         assert_eq!((home.voice("Ada").unwrap().id.as_str(), home.voices[0].name.as_str()), ("19", "ada"));
-        // the choirs and the breaths they take with either quality; never the other quality's
+        // the breaths a choir takes with either quality; never the other quality's
         let hifi = home.quality_files("hifi").unwrap();
-        assert_eq!(hifi, ["base.lsw", "choirs.json", "hifi/voices/ada.lsw", "hifi/vox.lsw", "motion/wide.lsw", "page/breaths.bin", "page/breaths.json", "voices/ada.lsw"]);
+        assert_eq!(hifi, ["base.lsw", "hifi/voices/ada.lsw", "hifi/vox.lsw", "motion/wide.lsw", "page/breaths.bin", "page/breaths.json", "voices/ada.lsw"]);
         assert!(home.quality_files("fast").unwrap().iter().all(|n| !n.starts_with("hifi/")));
         assert!(home.quality_files("best").is_err());
     }

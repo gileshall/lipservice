@@ -176,7 +176,7 @@ pub fn names(choirs: &Json) -> Result<Vec<&str>> {
 }
 
 fn named<'a>(j: &'a Json, name: &str) -> Result<&'a Json> {
-    let choirs = given(j, "choirs").ok_or_else(|| Error(format!("no choir '{name}': no choirs were given to sing by name")))?;
+    let choirs = given(j, "choirs").ok_or_else(|| Error(format!("'{name}' is a name: a choir is written out, an object with its parts")))?;
     match member(choirs, name) {
         Some(c) => Ok(c),
         None => err(format!("no choir '{name}': {}", names(choirs)?.join(", "))),
@@ -428,7 +428,7 @@ mod tests {
         assert_eq!(refused(r#","piece":"Duet","seed":1.5"#), "seed 1.5: a whole number");
         assert!(refused(r#","piece":"Duet","room":"cathedral""#).starts_with("no room cathedral"));
         let none = Json::parse(&format!("{{\"list\":{LIST},\"piece\":\"Duet\"}}")).unwrap();
-        assert_eq!(wanted(&none, "fast").err().unwrap().0, "no choir 'Duet': no choirs were given to sing by name");
+        assert_eq!(wanted(&none, "fast").err().unwrap().0, "'Duet' is a name: a choir is written out, an object with its parts");
         assert_eq!(names(ask("").get("choirs").unwrap()).unwrap(), ["Duet", "Other"]);
     }
 }

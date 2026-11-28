@@ -116,15 +116,15 @@ def protocol(lip, c):
     ok("notifications get no answer; ping does")
 
     tools = c.ask("tools/list")["result"]["tools"]
-    want([t["name"] for t in tools] == ["voices", "devices", "choirs", "say", "sing", "choir"], f"tools: {[t['name'] for t in tools]}")
+    want([t["name"] for t in tools] == ["voices", "devices", "say", "sing", "choir"], f"tools: {[t['name'] for t in tools]}")
     for t in tools:
         want(t["description"] and t["inputSchema"]["type"] == "object", f"{t['name']}: its description and schema")
         for k, v in t["inputSchema"]["properties"].items():
             want(v.get("description") and v.get("type"), f"{t['name']}.{k}: its description and type")
         a = t["annotations"]
         want(t["title"] == a["title"] and all(isinstance(a[k], bool) for k in ("readOnlyHint", "destructiveHint", "openWorldHint")), f"{t['name']}: its title and annotations")
-        want(a["readOnlyHint"] == (t["name"] in ("voices", "devices", "choirs")) and a["destructiveHint"] != a["readOnlyHint"] and not a["openWorldHint"], f"{t['name']}: annotated {a}")
-    ok("six tools, every argument described; the three that list are marked read-only, the three that make sound are not")
+        want(a["readOnlyHint"] == (t["name"] in ("voices", "devices")) and a["destructiveHint"] != a["readOnlyHint"] and not a["openWorldHint"], f"{t['name']}: annotated {a}")
+    ok("five tools, every argument described; the two that list are marked read-only, the three that make sound are not")
 
     c.send("{not json")
     r = c.read()
@@ -180,10 +180,6 @@ def tools(lip, c, folder, elsewhere):
         written(text, os.path.join(folder, f"song-{q}.wav"),
                 lip.sing(SONG, "hal", quality=q, shift=-12.0, motion="wide", seed=3, vibrato_delay=0.1, glide=12, dynamics=0.5, breathiness=1.2, diction=[]), f"sing, {q}, to a name in the folder")
 
-    text, error = c.call("choirs")
-    want(not error and json.loads(text) == lip.choirs(), f"choirs: {text}")
-    ok(f"choirs: {len(lip.choirs())}, as the package lists them")
-
     def beside(text, path, clip, what):
         j = os.path.splitext(path)[0] + ".json"
         want(text.endswith(f", written to {path}, its timing to {j}"), f"{what}: answered {text!r}")
@@ -196,23 +192,23 @@ def tools(lip, c, folder, elsewhere):
     want(clip.channels == 2 and [p["voice"] for p in clip.timing["parts"]] == ["cora", "ben"], f"a written choir: {clip}")
     beside(text, os.path.join(folder, "piece.wav"), clip, "choir, written as JSON, to a name in the folder")
 
-    name = "Ah, Poor Bird"
-    text, error = c.call("choir", piece=name, quality="fast", motion="none", timing=True)
+    text, error = c.call("choir", piece=json.dumps(PIECE), quality="fast", motion="none", timing=True)
     want(not error, text)
     path = text.split("written to ")[1].split(", its timing")[0]
-    want(os.path.dirname(path) == folder and os.path.basename(path).startswith("choir-ah-poor-bird-"), f"choir, no place given: {path}")
-    beside(text, path, lip.choir(name, quality="fast", motion="none"), "choir, by name, into the server's folder")
+    want(os.path.dirname(path) == folder and os.path.basename(path).startswith("choir-piece-"), f"choir, no place given: {path}")
+    beside(text, path, lip.choir(PIECE, quality="fast", motion="none"), "choir, no place given, into the server's folder")
 
     text, error = c.call("say", text="Hello there, this is the server.", quality="fast", out="timed.wav", timing=True)
     want(not error, text)
     beside(text, os.path.join(folder, "timed.wav"), lip.say("Hello there, this is the server.", quality="fast"), "say, with its timing")
 
     before = sorted(os.listdir(folder))
-    c.refused("no choir 'Kumbaya'", "choir", piece="Kumbaya", quality="fast")
+    c.refused("piece is 'Kumbaya': a choir as JSON text", "choir", piece="Kumbaya", quality="fast")
+    c.refused("'Kumbaya' is a name: a choir is written out", "choir", piece='{"choir": "Kumbaya"}', quality="fast")
     c.refused("a choir has parts", "choir", piece='{"room": "card"}', quality="fast")
     c.refused("High: every: 3 syllables", "choir", piece=json.dumps({**PIECE, "parts": [{**PIECE["parts"][0], "song": "%bpm 90\nevery C4:1 D4:1\n"}, PIECE["parts"][1]]}), quality="fast")
     c.refused("no voice 'zed'", "choir", piece=json.dumps({**PIECE, "parts": [{**PIECE["parts"][0], "voice": "zed"}]}), quality="fast")
-    c.refused("room is \"cathedral\"", "choir", piece=name, room="cathedral")
+    c.refused("room is \"cathedral\"", "choir", piece=json.dumps(PIECE), room="cathedral")
     if not (sys.platform == "linux" and not shutil.which("aplay")):
         there = lip.devices()
         if there:

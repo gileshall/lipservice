@@ -1,6 +1,6 @@
 ---
 name: voice
-description: Say something aloud, sing a song, or sing a piece for several voices with the lipservice tools (voices, devices, choirs, say, sing, choir). Use when the person wants to hear a sentence, wants a spoken or sung audio file, asks for a song or a harmony to be written and sung, or wants timing data for lip sync.
+description: Say something aloud, sing a song, or sing a piece for several voices with the lipservice tools (voices, devices, say, sing, choir). Use when the person wants to hear a sentence, wants a spoken or sung audio file, asks for a song or a harmony to be written and sung, or wants timing data for lip sync.
 ---
 
 # Speaking and singing with Lip Service
@@ -311,9 +311,6 @@ its beats, plus about four seconds for the room to die away.
 
 Pass it to `choir` as `piece`, as text. `out`, `device` and `quality` are as for `sing`; a
 choir's WAV file is stereo.
-
-Some pieces come with it, rounds and folk songs in parts and a barbershop tag, and are sung by
-name: `choirs` lists them, and `piece` is then the name alone, as listed.
 
 How a piece is sung can be changed without rewriting it:
 

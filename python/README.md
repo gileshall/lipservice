@@ -79,25 +79,9 @@ man's range. The whole format, and what the engine refuses, is in SCORE.md in th
 ## Choirs
 
 ```python
+import json
 import lipservice as lip
 
-print(lip.choirs())
-tag = lip.choir("Barbershop tag", seed=2)
-tag.save("tag.wav")
-for part in tag.timing["parts"]:
-    print(part["name"], part["voice"], part["start"] / lip.RATE, len(part["breaths"]))
-```
-
-`choir` sings a piece for several voices as lipservice.dev sings its choirs. Each singer is a little
-off the beat and the pitch and takes breaths in the rests, the singers are seated left to right, and
-the whole goes through a room, in stereo. A piece is a name from `choirs()`, a choir as a dict, or
-`load("piece.json")`. Keyword arguments change how it is sung: `voices` and `songs` by part, `room`
-(`ROOMS`), `motion` (`MOTIONS` or `"none"`), `seed`, and the ones in `HOW` (`sway`, `vibrato`,
-`loose`, `glide`, `dynamics`, `breath`, `breathiness`). None keeps the piece's own. `timing` says
-how each part was sung: its song as sung, the sample of the clip it starts on, its length, and its
-breaths.
-
-```python
 duet = {
     "room": "card",
     "style": {"glide": 9, "dynamics": 1.0, "breathiness": 0.6, "breath": 0.8},
@@ -106,18 +90,30 @@ duet = {
         {"name": "Low", "voice": "ben", "song": "%bpm 90\nsing E4:1\nwith G4:1\nme E4:2\n%rest 1\n"},
     ],
 }
-lip.choir(duet).save("duet.wav")
+clip = lip.choir(duet, seed=2)
+clip.save("duet.wav")
+for part in clip.timing["parts"]:
+    print(part["name"], part["voice"], part["start"] / lip.RATE, len(part["breaths"]))
+with open("duet.json", "w") as f:  # for the command line
+    json.dump(duet, f)
 ```
 
-A choir of your own is a dict: its `room` (`ROOMS`: `card`, `drier`, `driest`, `bare`, from most
-room to none), its `style` (`glide`, `dynamics` and `breathiness` as `sing` has them, and `breath`,
-the chance of a breath in each rest), and its `parts`, a singer each, seated left to right: a name,
-a voice and a song. Every part is written where a woman sings it; a man's voice sings its part an
+`choir` sings a choir you write: a voice and a song a singer. Each singer is a little off the beat
+and the pitch and takes breaths in the rests, the singers are seated left to right, and the whole
+goes through a room, in stereo. Keyword arguments change how it is sung: `voices` and `songs` by part, `room`
+(`ROOMS`), `motion` (`MOTIONS` or `"none"`), `seed`, and the ones in `HOW` (`sway`, `vibrato`,
+`loose`, `glide`, `dynamics`, `breath`, `breathiness`). None keeps the piece's own. `timing` says
+how each part was sung: its song as sung, the sample of the clip it starts on, its length, and its
+breaths.
+
+A choir is a dict: its `room` (`ROOMS`: `card`, `drier`, `driest`, `bare`, from most room to
+none), its `style` (`glide`, `dynamics` and `breathiness` as `sing` has them, and `breath`, the
+chance of a breath in each rest), and its `parts`, a singer each, seated left to right: a name, a
+voice and a song. Every part is written where a woman sings it; a man's voice sings its part an
 octave down. `load("piece.json")` reads one from a file.
 
 ```bash
-lipservice choirs
-lipservice choir "Barbershop tag" -o tag.wav
+lipservice choir duet.json -o duet.wav
 ```
 
 ## Timing, for pictures
@@ -161,14 +157,12 @@ of songs are sung at once, their chunks in turn; a quality says one text at a ti
 ```bash
 lipservice say "Hello there." -o hello.wav --voice ben
 lipservice sing song.txt --voice cora --motion vibrato
-lipservice choir "Barbershop tag" -o tag.wav --timing tag.json
+lipservice choir duet.json -o duet.wav --timing duet.timing.json
 lipservice voices
-lipservice choirs
 lipservice fetch
 ```
 
-Without `-o` the sound is played. `choir` takes one of `lipservice choirs` by name, or a piece's
-JSON file.
+Without `-o` the sound is played. `choir` takes a choir's JSON file.
 
 ## Choosing where it plays
 
@@ -179,7 +173,7 @@ default. `--device ID` plays through one of them, and so does `clip.play(device=
 ## For a model: the MCP server
 
 `lipservice mcp` serves speech and song to a language model over the Model Context Protocol, on
-stdin and stdout. It offers six tools: `voices`, `devices`, `choirs`, `say`, `sing` and `choir`. A client that takes
+stdin and stdout. It offers five tools: `voices`, `devices`, `say`, `sing` and `choir`. A client that takes
 MCP servers as JSON is given:
 
 ```json

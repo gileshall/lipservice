@@ -12,8 +12,8 @@
 
 Sixteen voices (voices()), two qualities: "hifi", the default, and "fast". The models are fetched the
 first time they are needed and kept. Everything is made on this machine. devices() lists its sound
-outputs, and play(device=ID) plays through one of them. choir() sings a piece for several voices as
-lipservice.dev's choirs do, seated and in a room, in stereo; choirs() names the site's pieces.
+outputs, and play(device=ID) plays through one of them. choir() sings a choir you write, a voice
+and a song a singer, seated and in a room, in stereo.
 """
 
 import array
@@ -34,7 +34,7 @@ from . import _audio, _models, _timing
 from ._engine import RATE, Engine, Error, Stream, rooms
 
 __version__ = version("lipservice")
-__all__ = ["say", "sing", "say_stream", "sing_stream", "Stream", "read", "choir", "choirs", "load", "loads", "frames", "load_timing", "voices", "devices", "Clip", "Error", "RATE", "QUALITIES", "MOTIONS", "ROOMS", "HOW"]
+__all__ = ["say", "sing", "say_stream", "sing_stream", "Stream", "read", "choir", "load", "loads", "frames", "load_timing", "voices", "devices", "Clip", "Error", "RATE", "QUALITIES", "MOTIONS", "ROOMS", "HOW"]
 
 QUALITIES = ("hifi", "fast")
 MOTIONS = ("straight", "vibrato", "wide")
@@ -327,41 +327,23 @@ def sing_stream(song, voice="ada", *, chunk=1.0, quality="hifi", shift=0.0, seed
 
 # ---------------------------------------------------------------- choirs
 
-_presets = None
-_presets_lock = threading.Lock()
-
-
-def choirs():
-    """The names of lipservice.dev's choirs, which choir() sings by name."""
-    return list(_choirs())
-
-
-def _choirs():
-    global _presets
-    with _presets_lock:
-        if _presets is None:
-            _presets = json.loads(_models.read("choirs.json"))
-    return _presets
-
-
 _plain = None
 
 
 def _asked(piece, **over):
     """The engine's ask for a piece (engine/src/piece.rs has it whole): the piece, the voices
-    there are, the site's pieces if it names one, and how it is sung where that is said."""
+    there are, and how it is sung where that is said."""
+    if not isinstance(piece, dict):
+        raise ValueError(f"a piece is a choir, a dict with its parts, not {type(piece).__name__}")
     ask = {"piece": piece, "list": [{"name": v["id"], "sex": v["sex"], "label": v["name"]} for v in _models.manifest()["voices"]]}
-    if isinstance(piece.get("choir") if isinstance(piece, dict) else piece, str):
-        ask["choirs"] = _choirs()
     ask.update({k: v for k, v in over.items() if v is not None})
     return ask
 
 
 def loads(text):
-    """A piece from its JSON text: a choir as lipservice.dev holds one ({room, pan, style, parts,
-    ...}), or {"choir": a choir or a name of choirs(), and any of seed, voices, songs, room, motion
-    and how}, as the editor's and the site's files have them. What choir() takes. One the engine
-    cannot arrange is refused."""
+    """A piece from its JSON text: a choir ({room, pan, style, parts, ...}), or {"choir": a choir,
+    and any of seed, voices, songs, room, motion and how}, as lipservice.dev's editor saves one.
+    What choir() takes. One the engine cannot arrange is refused."""
     global _plain
     piece = json.loads(text)
     with _lock:
@@ -381,11 +363,11 @@ def load(path):
 
 
 def choir(piece, *, quality="hifi", seed=None, voices=None, songs=None, room=None, motion=None, sway=None, vibrato=None, loose=None, glide=None, dynamics=None, breath=None, breathiness=None):
-    """A piece for several voices sung as lipservice.dev sings its choirs, in stereo: each singer
+    """A choir you write, sung in stereo: each singer
     performed as a person sings (a little off the beat and the pitch, breaths taken in the rests),
     seated left to right, and the whole put through a room.
 
-    piece: a name of choirs(), a choir, or what load() gives. A choir is a dict:
+    piece: a choir, or what load() gives. A choir is a dict:
 
         {"room": "card",
          "style": {"glide": 9, "dynamics": 1.0, "breathiness": 0.6},
@@ -406,8 +388,6 @@ def choir(piece, *, quality="hifi", seed=None, voices=None, songs=None, room=Non
     ask = _asked(piece, seed=seed, voices_by_part=voices, songs=songs, room=room, motion=motion, how=how or None)
     q = _quality(quality)
     want = q.engine.choir_want(ask)
-    if "choirs" in ask:
-        ask["choirs"] = {want["title"]: ask["choirs"][want["title"]]}
     names = {v["id"]: v["name"] for v in _models.manifest()["voices"]}
     ask["voices"] = {i: q.voice(names[i]) for i in want["voices"]}
     ask["motions"] = {m: q.motion(m) for m in want["motions"]}
@@ -420,7 +400,7 @@ def choir(piece, *, quality="hifi", seed=None, voices=None, songs=None, room=Non
         tp.update(text=p["text"], lag=p["lag"], shift=p["shift"])
         parts.append(tp)
     timing = _timing.clip(sung["rate"], sung["length"], parts, bpm=sung["bpm"], beat_zero=sung["beat_zero"])
-    return Clip(data, f"choir, {want['title']}, {quality}", channels=2, timing=timing)
+    return Clip(data, f"choir, {len(parts)} singers, {quality}", channels=2, timing=timing)
 
 
 def frames(timing, fps):

@@ -1355,7 +1355,6 @@ fn run(args: &[String]) -> Result<()> {
             simple::speak(&args[0], args, |e| if e[0] == "say" { say(e) } else { sing(e) })
         }
         Some("choir") => simple::choir(args),
-        Some("choirs") => simple::choirs(args),
         Some("voices") => simple::voices(args),
         Some("fetch") => simple::fetch(args),
         Some("--version") if args.len() == 1 => {

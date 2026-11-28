@@ -32,8 +32,7 @@ uv) and to `models.lipservice.dev`, for the files above.
 - `devices`: the output devices it can play through.
 - `say`: speak text, played through a device or written to a WAV file.
 - `sing`: sing a written score, played or written the same way.
-- `choirs`: the pieces for several voices that come with it.
-- `choir`: sing a piece for several voices, one of those or one Claude writes, in stereo.
+- `choir`: sing a piece for several voices that Claude writes, in stereo.
 
 `say`, `sing` and `choir` can also write what each voice did when (words, notes, breaths, pitch,
 the beat) as a JSON file beside the sound, for lip sync and other pictures.

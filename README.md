@@ -126,19 +126,9 @@ it does not know is an error that names the tag, never skipped in silence.
 ## Choirs
 
 ```python
+import json
 import lipservice as lip
 
-print(lip.choirs())
-tag = lip.choir("Barbershop tag", seed=2)
-tag.save("tag.wav")
-```
-
-`choir` sings a piece for several voices as [lipservice.dev](https://lipservice.dev) sings its
-choirs. Each singer is a little off the beat and the pitch and takes breaths in the rests, the
-singers are seated left to right, and the whole goes through a room, in stereo. `choirs()` names
-the pieces that come with it: rounds, folk songs in parts, a barbershop tag.
-
-```python
 duet = {
     "room": "card",
     "style": {"glide": 9, "dynamics": 1.0, "breathiness": 0.6, "breath": 0.8},
@@ -148,12 +138,18 @@ duet = {
     ],
 }
 lip.choir(duet).save("duet.wav")
+with open("duet.json", "w") as f:  # for the command line
+    json.dump(duet, f)
 ```
 
-A choir of your own is a dict: its `room` (`ROOMS`: `card`, `drier`, `driest`, `bare`, from most
-room to none), its `style` (`glide`, `dynamics` and `breathiness` as `sing` has them, and `breath`,
-the chance of a breath in each rest), and its `parts`, a singer each, seated left to right: a name,
-a voice and a song. Every part is written where a woman sings it; a man's voice sings its part an
+`choir` sings a choir you write: a voice and a song a singer. Each singer is a little off the beat
+and the pitch and takes breaths in the rests, the singers are seated left to right, and the whole
+goes through a room, in stereo.
+
+A choir is a dict: its `room` (`ROOMS`: `card`, `drier`, `driest`, `bare`, from most room to
+none), its `style` (`glide`, `dynamics` and `breathiness` as `sing` has them, and `breath`, the
+chance of a breath in each rest), and its `parts`, a singer each, seated left to right: a name, a
+voice and a song. Every part is written where a woman sings it; a man's voice sings its part an
 octave down. `load("piece.json")` reads one from a file.
 
 Keyword arguments change how a piece is sung, and `None` keeps the piece's own:
@@ -168,8 +164,7 @@ Keyword arguments change how a piece is sung, and `None` keeps the piece's own:
 | `glide`, `dynamics`, `breath`, `breathiness` | the style's own, by another number (`HOW` has each one's range) |
 
 ```bash
-lipservice choirs
-lipservice choir "Barbershop tag" -o tag.wav
+lipservice choir duet.json -o duet.wav
 ```
 
 ## Timing, for pictures
@@ -225,14 +220,13 @@ the same sixteen voices, and each fetches only what it needs: 56 MB before the f
 lipservice say "Hello there." -o hello.wav
 lipservice say "Hello there." --voice ben --rate 1.15 --quality fast -o ben.wav
 lipservice sing song.txt --voice cora --motion vibrato -o cora.wav
-lipservice choir "Barbershop tag" --room drier -o tag.wav --timing tag.json
+lipservice choir duet.json --room drier -o duet.wav --timing duet.timing.json
 lipservice voices
-lipservice choirs
 lipservice --version
 ```
 
 Without `-o` the sound is played. `-` in place of the text, the song or the piece reads it from
-standard input. `choir` takes one of `lipservice choirs` by name, or a piece's JSON file.
+standard input. `choir` takes a choir's JSON file.
 `lipservice say --help`, `lipservice sing --help` and `lipservice choir --help` list every option.
 
 

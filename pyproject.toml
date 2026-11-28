@@ -8,7 +8,7 @@ backend-path = ["python"]
 
 [project]
 name = "lipservice"
-version = "0.2.0"
+version = "0.2.1"
 description = "Talk is cheap. Singing is free. Sixteen voices that sing and speak on your own CPU"
 readme = "python/README.md"
 requires-python = ">=3.9"

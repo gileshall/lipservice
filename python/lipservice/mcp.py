@@ -3,8 +3,8 @@
 
 """The MCP server: `lipservice mcp`. A model that connects to it can speak and sing.
 
-It speaks the Model Context Protocol over stdin and stdout, a JSON message a line, and offers six
-tools: voices, devices, choirs, say, sing and choir. Standard library only.
+It speaks the Model Context Protocol over stdin and stdout, a JSON message a line, and offers five
+tools: voices, devices, say, sing and choir. Standard library only.
 
 Where the sound of say, sing and choir goes is always said:
 
@@ -25,13 +25,12 @@ stops and the server ends.
 
 import json
 import os
-import re
 import sys
 import threading
 import time
 import traceback
 
-from . import HOW, MOTIONS, QUALITIES, ROOMS, Error, __version__, _audio, choir, choirs, devices, loads, say, sing, voices
+from . import HOW, MOTIONS, QUALITIES, ROOMS, Error, __version__, _audio, choir, devices, loads, say, sing, voices
 
 # newest first: the one a client asks for if it is here, the newest if it is not
 PROTOCOLS = ("2025-06-18", "2025-03-26", "2024-11-05")
@@ -89,7 +88,7 @@ The song is sung where it is written: for a male voice keep the score and give s
 
 _CHOIR = """Sings a piece for several voices at once: each singer performed as a person sings (a little off the beat and the pitch, breaths taken in the rests), seated left to right, and the whole put through a room, in stereo.
 
-`piece` is a name from the choirs tool, or a choir you write, as JSON text:
+`piece` is a choir you write, as JSON text:
 
 {"room": "card",
  "style": {"glide": 9, "dynamics": 1.0, "breathiness": 0.6, "breath": 0.8},
@@ -123,13 +122,6 @@ TOOLS = [
         "title": "List the sound outputs",
         "annotations": {"title": "List the sound outputs", **_READS},
         "description": "The sound outputs of the machine this server runs on: each one's id (what say and sing take as device), its name, and which is the system's default. Two outputs can share a name; the id tells them apart.",
-        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
-    },
-    {
-        "name": "choirs",
-        "title": "List the choirs",
-        "annotations": {"title": "List the choirs", **_READS},
-        "description": "The pieces for several voices that the choir tool sings by name: rounds, folk songs in parts, a barbershop tag.",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
     {
@@ -186,7 +178,7 @@ TOOLS = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "piece": {"type": "string", "description": "A name from the choirs tool, or a choir as JSON text."},
+                "piece": {"type": "string", "description": "A choir as JSON text."},
                 "quality": _QUALITY,
                 "seed": {"type": "integer", "description": "The singers' draws: the same seed gives the same performance; another gives another take. Left out, the piece's own."},
                 "room": {"type": "string", "enum": list(ROOMS), "description": "The room it is sung in, in place of the piece's own."},
@@ -386,9 +378,6 @@ class Server:
     def _devices(self, call):
         return json.dumps(devices(), indent=1, ensure_ascii=False)
 
-    def _choirs(self, call):
-        return json.dumps(choirs(), indent=1, ensure_ascii=False)
-
     def _say(self, call, text, voice="ada", quality="hifi", rate=1.0, shift=0.0, seed=0, ssml=False, device=None, out=None, timing=False):
         return self._give(call, "say", voice, device, out, timing, lambda: say(text, voice, quality=quality, rate=rate, shift=shift, seed=seed, ssml=ssml))
 
@@ -396,12 +385,9 @@ class Server:
         return self._give(call, "sing", voice, device, out, timing, lambda: sing(score, voice, quality=quality, **options))
 
     def _choir(self, call, piece, quality="hifi", device=None, out=None, timing=False, **options):
-        named = piece in choirs()
-        if not named and not piece.lstrip().startswith("{"):
-            raise ValueError(f"no choir {piece!r}: a name from the choirs tool ({', '.join(choirs())}), or a choir as JSON text")
-        # a file of the server's naming is named for the piece
-        slug = re.sub(r"[^a-z0-9]+", "-", piece.lower()).strip("-") if named else "piece"
-        return self._give(call, "choir", slug, device, out, timing, lambda: choir(piece if named else loads(piece), quality=quality, **options))
+        if not piece.lstrip().startswith("{"):
+            raise ValueError(f"piece is {piece[:40]!r}: a choir as JSON text, {{\"room\": ..., \"style\": ..., \"parts\": [...]}}")
+        return self._give(call, "choir", "piece", device, out, timing, lambda: choir(loads(piece), quality=quality, **options))
 
     def _file(self, kind, voice, device, out):
         """Where a call's WAV file goes, and whether the name is this server's own; None if it is only played."""

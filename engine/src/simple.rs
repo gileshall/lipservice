@@ -12,13 +12,12 @@
 //!         [--motion straight|vibrato|wide|none] [--voices NAME,NAME,...] [--sway X] [--vibrato X] [--loose X]
 //!         [--glide N] [--dynamics X] [--breath X] [--breathiness X]
 //!     lipservice voices
-//!     lipservice choirs
 //!     lipservice fetch [--quality hifi|fast|all]
 //!
 //! TEXT, SONG.txt or PIECE as - is read from stdin. Without -o the sound is played (afplay on macOS,
 //! aplay on Linux). say and sing build the file arguments the engine's own forms take and run those,
 //! as a voice heard alone goes out (--alone), so the samples are theirs and the package's. choir
-//! sings a piece for several voices (lipservice::piece): one of `choirs` by name, or a JSON file.
+//! sings a choir written as a JSON file (lipservice::piece).
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -45,13 +44,12 @@ pub const USAGE: &str = "usage:
       [--motion straight|vibrato|wide|none] [--voices NAME,NAME,...] [--sway X] [--vibrato X] [--loose X]
       [--glide N] [--dynamics X] [--breath X] [--breathiness X]
   lipservice voices
-  lipservice choirs
   lipservice fetch [--quality hifi|fast|all]
   lipservice --version
 
-TEXT, SONG.txt or PIECE as - is read from stdin. Without -o the sound is played. choir sings a piece
-for several voices, seated and in a room, in stereo: PIECE is one of `lipservice choirs`, or a
-piece's JSON file. --timing writes what each voice did when (phones, words, notes, breaths, pitch
+TEXT, SONG.txt or PIECE as - is read from stdin. Without -o the sound is played. choir sings a choir
+you write, seated and in a room, in stereo: PIECE is its JSON file (a room, and a name, a voice
+and a song a singer). --timing writes what each voice did when (phones, words, notes, breaths, pitch
 and loudness, in samples) as JSON. The models are fetched
 from https://models.lipservice.dev on first use and kept (LIPSERVICE_CACHE says where), with the
 list of them; after that the server is asked nothing until fetch, which reads its list again.
@@ -247,19 +245,6 @@ fn obj(kv: Vec<(&str, Json)>) -> Json {
     Json::Obj(kv.into_iter().map(|(k, v)| (k.to_string(), v)).collect())
 }
 
-pub fn choirs(args: &[String]) -> Result<()> {
-    if args.len() != 1 {
-        return err(USAGE);
-    }
-    let mut get = curl;
-    let home = Home::open(&mut get)?;
-    let all = Json::parse(&text_of(&home.path("choirs.json", &mut get)?)?)?;
-    for n in piece::names(&all)? {
-        println!("{n}");
-    }
-    Ok(())
-}
-
 /// A piece for several voices, sung whole (lipservice::piece), as the package's choir() sings it.
 pub fn choir(args: &[String]) -> Result<()> {
     let mut a = Args { rest: args[1..].to_vec() };
@@ -299,18 +284,11 @@ pub fn choir(args: &[String]) -> Result<()> {
     a.done()?;
     let mut get = curl;
     let home = Home::open(&mut get)?;
-    let all = Json::parse(&text_of(&home.path("choirs.json", &mut get)?)?)?;
-    let piece = if what == "-" {
-        Json::parse(&stdin_all()?)?
-    } else if piece::names(&all)?.contains(&what.as_str()) {
-        Json::Str(what.clone())
-    } else if Path::new(&what).is_file() {
-        Json::parse(&text_of(Path::new(&what))?).map_err(|e| Error(format!("{what}: {e}")))?
-    } else {
-        return err(format!("no choir '{what}': it is not one of `lipservice choirs`, and there is no such file"));
-    };
+    let piece = if what == "-" { Json::parse(&stdin_all()?)? } else { Json::parse(&text_of(Path::new(&what))?).map_err(|e| Error(format!("{what}: {e}")))? };
+    if !matches!(piece, Json::Obj(_)) {
+        return err(format!("{what}: a piece is a choir, an object with its parts"));
+    }
     ask.push(("piece", piece));
-    ask.push(("choirs", all));
     ask.push(("list", Json::Arr(home.voices.iter().map(|v| obj(vec![("name", Json::Str(v.id.clone())), ("sex", Json::Str(v.sex.clone())), ("label", Json::Str(v.name.clone()))])).collect())));
     let wanted = piece::wanted(&obj(ask), &q)?;
     let t = Instant::now();

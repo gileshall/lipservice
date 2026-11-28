@@ -3,7 +3,7 @@
 
 [package]
 name = "lipservice-wasm"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 license = "AGPL-3.0-only"
 description = "The lipservice engine for the browser, as a C ABI over wasm32 memory"

@@ -6,18 +6,16 @@
     lipservice say "Hello there."
     lipservice say "Hello there." -o hello.wav --voice ben
     lipservice sing song.txt --voice cora --motion vibrato
-    lipservice choir "Barbershop tag" -o tag.wav --timing tag.json
-    lipservice choir piece.json --room drier
+    lipservice choir piece.json -o piece.wav --room drier --timing piece.json
     lipservice say "Hello there." --device BuiltInSpeakerDevice
     lipservice voices
-    lipservice choirs
     lipservice devices
     lipservice fetch
     lipservice mcp --out ~/sounds
 
 Without -o the sound is played; with it, written as a WAV file. --device plays it through one of
 `lipservice devices`, by its id. --timing writes what the voices did when, as JSON. `choir` sings a
-piece for several voices: one of `lipservice choirs` by name, or a JSON file. `mcp` is the MCP
+choir you write, a JSON file: a room, and a name, a voice and a song a singer. `mcp` is the MCP
 server (mcp.py).
 """
 
@@ -26,7 +24,7 @@ import os
 import sys
 import time
 
-from . import HOW, MOTIONS, QUALITIES, ROOMS, Error, __version__, _models, choir, choirs, devices, load, loads, say, sing, voices
+from . import HOW, MOTIONS, QUALITIES, ROOMS, Error, __version__, _models, choir, devices, load, loads, say, sing, voices
 
 
 def _text(arg):
@@ -84,8 +82,8 @@ def _parser():
     g.add_argument("--rules", metavar="RULES.txt", help="diction rules, a line each, read before the song's own")
     g.add_argument("--tag", action="append", default=[], metavar="NAME", help="a name the singer goes by, for a rule's for=")
 
-    c = sub.add_parser("choir", help="sing a piece for several voices, seated and in a room, in stereo")
-    c.add_argument("piece", metavar="PIECE", help="one of `lipservice choirs`, a piece's JSON file, or - to read one from stdin")
+    c = sub.add_parser("choir", help="sing a choir you write, seated and in a room, in stereo")
+    c.add_argument("piece", metavar="PIECE", help="a choir's JSON file, or - to read one from stdin")
     _where(c)
     c.add_argument("--seed", type=int, help="the singers' draws (the piece's own)")
     c.add_argument("--room", choices=ROOMS, help="the room it is sung in (the piece's own)")
@@ -95,7 +93,6 @@ def _parser():
         c.add_argument(f"--{k}", type=type(lo), metavar=f"{lo:g}..{hi:g}")
 
     sub.add_parser("voices", help="list the voices")
-    sub.add_parser("choirs", help="list the choirs `lipservice choir` sings by name")
     sub.add_parser("devices", help="list this machine's sound outputs: id, name, and * on the default")
 
     m = sub.add_parser("mcp", help="serve say and sing to a model, over the Model Context Protocol on stdin and stdout")
@@ -122,9 +119,6 @@ def _run(a):
     if a.command == "voices":
         for v in voices():
             print(f"{v['name']}\t{v['sex']}\t{v['source']}")
-    elif a.command == "choirs":
-        for n in choirs():
-            print(n)
     elif a.command == "devices":
         for d in devices():
             print(f"{d['id']}\t{d['name']}\t{'*' if d['default'] else ''}")
@@ -146,14 +140,7 @@ def _run(a):
         _give(clip, time.perf_counter() - t, a)
     elif a.command == "choir":
         t = time.perf_counter()
-        if a.piece == "-":
-            piece = loads(sys.stdin.read())
-        elif a.piece in choirs():
-            piece = a.piece
-        elif os.path.isfile(a.piece):
-            piece = load(a.piece)
-        else:
-            raise ValueError(f"no choir {a.piece!r}: it is not one of `lipservice choirs`, and there is no such file")
+        piece = loads(sys.stdin.read()) if a.piece == "-" else load(a.piece)
         clip = choir(piece, quality=a.quality, seed=a.seed, room=a.room, motion=a.motion, voices=a.voices, **{k: getattr(a, k) for k in HOW})
         _give(clip, time.perf_counter() - t, a)
     else:

@@ -183,14 +183,13 @@ def parts(lip, engine, b, d):
         same_bytes(c, "the command line's choir")
 
     def listed():
-        if not lip.choirs():
-            raise SystemExit("no choirs of the site's")
         for l in (line, [engine]):
-            if subprocess.run([*l, "choirs"], check=True, capture_output=True, text=True).stdout.splitlines() != lip.choirs():
-                raise SystemExit(f"{l[-1]} choirs: not the package's")
             r = subprocess.run([*l, "choir", "No Such Song", "-o", wav], capture_output=True, text=True)
-            if r.returncode != 1 or "no choir 'No Such Song'" not in r.stderr:
-                raise SystemExit(f"{l[-1]} choir, a name there is not: {r.stderr}")
+            if r.returncode != 1 or "No Such Song" not in r.stderr:
+                raise SystemExit(f"{l[-1]} choir, a file there is not: {r.stderr}")
+            r = subprocess.run([*l, "choirs"], capture_output=True, text=True)
+            if r.returncode == 0:
+                raise SystemExit(f"{l[-1]} choirs: not refused")
 
     # the engine's command line for people, the models found by name: the package's bytes and timing
     def rust(make, *args):
@@ -219,7 +218,7 @@ def parts(lip, engine, b, d):
             r = subprocess.run([*l, "choir", piece, "--quality", "fast", "--glide", "soon", "-o", wav], capture_output=True, text=True)
             if r.returncode == 0:
                 raise SystemExit("choir --glide soon: not refused")
-            # fetch, with the models in a folder: every file a quality reads is there, the breaths and the choirs among them
+            # fetch, with the models in a folder: every file a quality reads is there, the breaths among them
             ran(subprocess.run([*l, "fetch", "--quality", "all"], capture_output=True, text=True))
         return run
 
@@ -232,7 +231,8 @@ def parts(lip, engine, b, d):
             (ValueError, lambda: lip.sing(SONG, glide=0)),
             (lip.Error, lambda: lip.sing("%bpm 90\nla H9:1\n")),
             (lip.Error, lambda: lip.say("<speak>", ssml=True)),
-            (lip.Error, lambda: lip.choir("No Such Song")),
+            (ValueError, lambda: lip.choir("No Such Song")),
+            (lip.Error, lambda: lip.choir({"choir": "No Such Song"})),
             (lip.Error, lambda: lip.choir(DUET, motion="wobble")),
             (lip.Error, lambda: lip.choir(DUET, voices=["ada", "ben", "cora"])),
             (lip.Error, lambda: lip.choir(DUET, voices=["zed"])),
@@ -265,10 +265,10 @@ def parts(lip, engine, b, d):
     all_["timing: sing, its frames and beat"] = timing_sing
     all_["timing: choir, its frames, breath and air"] = timing_choir
     all_["the command line's choir and --timing, voices by name: the package's own bytes"] = by_name
-    all_["both command lines: choirs, and a choir there is not"] = listed
+    all_["both command lines: a choir's file there is not, and no choirs to list"] = listed
     for q in lip.QUALITIES:
         all_[f"the engine's command line: choir, a piece, {q}"] = rust(lambda n, q=q: lip.choir(n, quality=q, seed=4, room="card", loose=0.5), "choir", "PIECE", "--quality", q, "--room", "card", "--loose", "0.5")
-        all_[f"the engine's command line: choir, Ah, Poor Bird, {q}"] = rust(lambda n, q=q: lip.choir("Ah, Poor Bird", quality=q, voices=[None, "ben"], motion="none"), "choir", "Ah, Poor Bird", "--quality", q, "--voices", ",ben", "--motion", "none")
+        all_[f"the engine's command line: choir, a voice changed, {q}"] = rust(lambda n, q=q: lip.choir(n, quality=q, seed=4, voices=[None, "eve"], motion="none"), "choir", "PIECE", "--quality", q, "--voices", ",eve", "--motion", "none")
         all_[f"the engine's command line: sing, {q}"] = rust(lambda n, q=q: lip.sing(SONG, "hal", quality=q, shift=-12.0, motion="wide", seed=3), "sing", "SONG", "--quality", q, "--voice", "hal", "--shift", "-12", "--motion", "wide", "--seed", "3")
         all_[f"the engine's command line: say, {q}"] = rust(lambda n, q=q: lip.say(TWO, "ben", quality=q, seed=7, rate=1.1), "say", TWO, "--quality", q, "--voice", "ben", "--seed", "7", "--rate", "1.1")
     all_["the engine's command line: a piece from stdin with every manner flagged; fetch"] = manner([engine])
