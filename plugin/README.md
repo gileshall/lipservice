@@ -11,13 +11,13 @@ the plugin installs the engine itself.
 
 ## What it does on your computer
 
-- **Starts the server.** The plugin runs `uvx lipservice@0.2.0 mcp`. The first time, uv downloads
-  the `lipservice` package, version 0.2.0 exactly, from [PyPI](https://pypi.org/project/lipservice/).
+- **Starts the server.** The plugin runs `uvx lipservice@0.2.1 mcp`. The first time, uv downloads
+  the `lipservice` package, version 0.2.1 exactly, from [PyPI](https://pypi.org/project/lipservice/).
   The engine is compiled into that package.
 - **Fetches the models.** On first use the engine downloads its model files from
   `https://models.lipservice.dev`, about 56 MB for the default quality. Each file's size and
   SHA-256 hash are checked against the published manifest before it is used. The manifest is kept
-  with the files in your user cache folder, and the server is not asked again: `uvx lipservice@0.2.0
+  with the files in your user cache folder, and the server is not asked again: `uvx lipservice@0.2.1
   fetch` reads it again, for a model fix. Set `LIPSERVICE_CACHE` to keep them somewhere else.
 - **Makes sound.** Speech and singing are computed locally. The sound is played through an output
   device you name, or written as a WAV file.

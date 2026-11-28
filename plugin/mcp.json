@@ -5,7 +5,7 @@
       "type": "stdio",
       "command": "uvx",
       "args": [
-        "lipservice@0.2.0",
+        "lipservice@0.2.1",
         "mcp"
       ]
     }
